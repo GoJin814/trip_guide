@@ -168,14 +168,14 @@ st.set_page_config(
 # ======================================================================
 CSS = """
 <style>
-    .block-container {padding: 1rem 0.6rem 2rem 0.6rem !important;}
+    .block-container {padding: 4rem 0.6rem 2rem 0.6rem !important;}
     .stCheckbox label {font-size: 0.92rem !important; font-weight: 700 !important; cursor: pointer; color: #111827;}
     .stCheckbox {margin-bottom: 0 !important;}
 
     div[data-testid="stVerticalBlockBorderWrapper"] {
-        border-radius: 10px !important;
+        padding: 0.3rem 0.75rem 0.3rem 0.75rem !important; margin-bottom: 0.4rem !important; border-radius: 10px !important;
     }
-    [class*="st-key-card_"] [data-testid="stVerticalBlock"] {gap: 0.0rem !important;}
+    [class*="st-key-card_"] [data-testid="stVerticalBlock"] {gap: 0.3rem !important;}
     [class*="st-key-card_"] [data-testid="stCaptionContainer"] {
         font-size: 0.78rem !important; color: #4B5563 !important; line-height: 1.3 !important; padding-left: 2px;
     }
@@ -200,8 +200,18 @@ CSS = """
     .st-key-topbar button {padding-left: 0.3rem !important; padding-right: 0.3rem !important; white-space: nowrap;}
 
     .st-key-mapbox {margin-bottom: 0 !important;}
-    .st-key-progress_wrap {margin-top: 0.5rem !important; margin-bottom: 0.5rem !important;}
-    .st-key-mapbox iframe {width: 100% !important; aspect-ratio: 1 / 1;}
+    
+    /* 기존 마이너스 여백 제거 및 정상화 */
+    .st-key-progress_wrap {
+        margin-top: 0.5rem !important; 
+    }
+    
+    /* 지도 높이를 화면 폭에 맞춰 자동으로 계산하도록 강제 */
+    .st-key-mapbox iframe {
+        width: 100% !important; 
+        height: auto !important;
+        aspect-ratio: 1 / 1;
+    }
 </style>
 """
 TIME_SLOTS = [f"{h:02d}:{m:02d}" for h in range(5, 24) for m in (0, 30)]
