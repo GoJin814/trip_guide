@@ -234,18 +234,6 @@ def run_search(rid: str) -> None:
         ss[f"msg_{rid}"] = "검색에 실패했어요. API 키와 Places API 설정을 확인해 주세요."
 
 
-def set_endpoint(rid: str, which: str) -> None:
-    """검색 결과 중 선택한 장소를 출발지/도착지로 지정"""
-    ss = st.session_state
-    res = ss.get(f"res_{rid}") or []
-    if not res:
-        return
-    i = min(max(int(ss.get(f"pick_{rid}", 0)), 0), len(res) - 1)
-    p = res[i]
-    ss[f"{'fn' if which == 'from' else 'tn'}_{rid}"] = p["name"]
-    ss.setdefault(f"coord_{rid}", {"from": None, "to": None})[which] = (round(p["lat"], 4), round(p["lon"], 4))
-
-
 # ======================================================================
 # 콜백
 # ======================================================================
@@ -262,13 +250,54 @@ def delete_record(rid: str) -> None:
 # ======================================================================
 # 입력 대화상자 (추가 / 수정 공용)
 # ======================================================================
+def rec_points(r: dict) -> list:
+    """기록의 장소 목록(순서대로). 예전 기록은 출발지·도착지를 장소로 사용."""
+    pts = r.get("points")
+    if not isinstance(pts, list):
+        pts = [{"name": r.get("from_name", ""), "lat": r.get("from_lat"), "lon": r.get("from_lon")},
+               {"name": r.get("to_name", ""), "lat": r.get("to_lat"), "lon": r.get("to_lon")}]
+    return [{"name": str(p.get("name", "")), "lat": p.get("lat"), "lon": p.get("lon")}
+            for p in pts if isinstance(p, dict)]
+
+
+def pts_init(rid: str, rec: dict) -> None:
+    if f"pts_{rid}" not in st.session_state:
+        st.session_state[f"pts_{rid}"] = rec_points(rec) if rec else []
+
+
+def add_point(rid: str) -> None:
+    ss = st.session_state
+    res = ss.get(f"res_{rid}") or []
+    if not res:
+        return
+    i = min(max(int(ss.get(f"pick_{rid}", 0)), 0), len(res) - 1)
+    p = res[i]
+    ss.setdefault(f"pts_{rid}", []).append(
+        {"name": p["name"], "lat": round(p["lat"], 4), "lon": round(p["lon"], 4)})
+
+
+def remove_point(rid: str, idx: int) -> None:
+    pts = st.session_state.get(f"pts_{rid}", [])
+    if 0 <= idx < len(pts):
+        del pts[idx]
+
+
 def open_form(rid: str, rec: dict) -> None:
     ss = st.session_state
-    if f"coord_{rid}" not in ss:
-        ss[f"coord_{rid}"] = {"from": _pt(rec.get("from_lat"), rec.get("from_lon")),
-                              "to": _pt(rec.get("to_lat"), rec.get("to_lon"))}
+    pts_init(rid, rec)
+    pts = ss[f"pts_{rid}"]
 
-    with st.expander("🔎 구글 지도에서 장소 찾기", expanded=True):
+    st.markdown("**📍 방문 장소 (순서대로)**")
+    if pts:
+        for i, p in enumerate(pts):
+            c_n, c_d = st.columns([8, 1])
+            c_n.markdown(f"{i + 1}. {p['name']}")
+            c_d.button("🗑️", key=f"delpt_{rid}_{i}", help="이 장소 삭제",
+                       on_click=remove_point, args=(rid, i))
+    else:
+        st.caption("장소가 없어요. 아래에서 검색해 추가해 주세요.")
+
+    with st.expander("🔎 구글 지도에서 장소 찾아 추가", expanded=True):
         st.text_input("검색어", key=f"q_{rid}", placeholder="예: 인천국제공항 제1터미널")
         st.button("검색", key=f"s_{rid}", on_click=run_search, args=(rid,), use_container_width=True)
         if ss.get(f"msg_{rid}"):
@@ -277,20 +306,13 @@ def open_form(rid: str, rec: dict) -> None:
         if res:
             st.radio("검색 결과", options=list(range(len(res))),
                      format_func=lambda i: f"{res[i]['name']} · {res[i]['addr']}", key=f"pick_{rid}")
-            c1, c2 = st.columns(2)
-            c1.button("출발지로 지정", key=f"bf_{rid}", on_click=set_endpoint, args=(rid, "from"),
-                      use_container_width=True)
-            c2.button("도착지로 지정", key=f"bt_{rid}", on_click=set_endpoint, args=(rid, "to"),
+            st.button("➕ 목록 끝에 추가", key=f"addpt_{rid}", on_click=add_point, args=(rid,),
                       use_container_width=True)
 
     title = st.text_input("여정 제목", value=rec.get("trip_title") or ss.get("travel_title") or "",
                           key=f"t_{rid}")
-    n1, n2 = st.columns(2)
-    from_name = n1.text_input("출발지", value=rec.get("from_name", ""), key=f"fn_{rid}")
-    to_name = n2.text_input("도착지", value=rec.get("to_name", ""), key=f"tn_{rid}")
-    coord = ss[f"coord_{rid}"]
-    st.caption(f"📍 좌표: 출발지 {'설정됨' if coord.get('from') else '없음'} · "
-               f"도착지 {'설정됨' if coord.get('to') else '없음'}")
+    if pts:
+        st.caption(f"🛫 출발: {pts[0]['name']} · 🛬 도착: {pts[-1]['name']} (첫 번째·마지막 장소로 자동 지정)")
 
     d1, d2 = st.columns(2)
     s0 = parse_date(rec.get("start")) or datetime.now(KST).date()
@@ -303,17 +325,18 @@ def open_form(rid: str, rec: dict) -> None:
     memo = st.text_area("메모 (Enter로 줄바꿈)", value=rec.get("memo", ""), key=f"m_{rid}", height=90)
 
     if st.button("저장", key=f"save_{rid}", type="primary", use_container_width=True):
-        if not from_name.strip() or not to_name.strip():
-            st.error("출발지와 도착지를 입력해 주세요.")
+        if not pts:
+            st.error("장소를 한 곳 이상 추가해 주세요.")
         elif end < start:
             st.error("종료일은 시작일 이후여야 해요.")
         else:
-            fc, tc = coord.get("from"), coord.get("to")
+            first, last = pts[0], pts[-1]
             new = dict(
                 id=rec.get("id") or uuid4().hex[:8],
                 trip_title=title.strip() or "여행",
-                from_name=from_name.strip(), from_lat=fc[0] if fc else None, from_lon=fc[1] if fc else None,
-                to_name=to_name.strip(), to_lat=tc[0] if tc else None, to_lon=tc[1] if tc else None,
+                from_name=first["name"], from_lat=first["lat"], from_lon=first["lon"],
+                to_name=last["name"], to_lat=last["lat"], to_lon=last["lon"],
+                points=[dict(p) for p in pts],
                 start=start.isoformat(), end=end.isoformat(),
                 country=country.strip(), memo=memo.strip(),
             )
@@ -322,7 +345,7 @@ def open_form(rid: str, rec: dict) -> None:
             else:
                 ss.records = [new if r["id"] == rid else r for r in ss.records]
             save_records()
-            ss.pop(f"coord_{rid}", None)
+            ss.pop(f"pts_{rid}", None)
             ss.msg = "📖 여행 기록을 저장했어요."
             st.rerun()
 
@@ -388,15 +411,13 @@ if st.session_state.get("msg"):
 # 화면
 # ======================================================================
 def tab_nav(current: str) -> None:
-    """페이지 제목 위 탭 메뉴. 현재 탭은 굵게 표시."""
-    cols = st.columns([1.4, 1.4, 4])
-    for col, (name, target) in zip(cols, [("여행 정보", "app.py"), ("여행 기록", "pages/records.py")]):
-        with col:
-            if name == current:
-                st.markdown(f"<div style='font-weight:800;font-size:1.05rem;color:#111827;padding-top:0.3rem;'>{name}</div>",
-                            unsafe_allow_html=True)
-            else:
-                st.page_link(target, label=name)
+    """페이지 제목 위 탭 메뉴. 현재 탭이 강조되고, 다른 탭을 누르면 이동해요."""
+    targets = {"여행 정보": "app.py", "여행 기록": "pages/records.py"}
+    with st.container(key="tabnav"):
+        pick = st.pills("페이지", list(targets), default=current, key=f"tabpills_{current}",
+                        label_visibility="collapsed")
+    if pick and pick != current:
+        st.switch_page(targets[pick])
 
 
 tab_nav("여행 기록")
@@ -409,14 +430,12 @@ recs = sort_records(st.session_state.records, order)
 places, routes = [], []
 for r in recs:
     info = f"{r.get('trip_title') or ''} · {r.get('start', '')}~{r.get('end', '')}"
-    if r.get("from_lat") is not None and r.get("from_lon") is not None:
-        places.append({"name": f"출발 · {r['from_name']}", "addr": info,
-                       "lat": r["from_lat"], "lon": r["from_lon"]})
-    if r.get("to_lat") is not None and r.get("to_lon") is not None:
-        places.append({"name": f"도착 · {r['to_name']}", "addr": info,
-                       "lat": r["to_lat"], "lon": r["to_lon"]})
-    if None not in (r.get("from_lat"), r.get("from_lon"), r.get("to_lat"), r.get("to_lon")):
-        routes.append([[r["from_lat"], r["from_lon"]], [r["to_lat"], r["to_lon"]]])
+    valid = [p for p in rec_points(r) if p["lat"] is not None and p["lon"] is not None]
+    for i, p in enumerate(valid, 1):
+        places.append({"name": f"{i}. {p['name']}", "addr": info, "lat": p["lat"], "lon": p["lon"]})
+    if len(valid) >= 2:
+        routes.append([[p["lat"], p["lon"]] for p in valid])
+
 
 col_map, col_list = st.columns([1.1, 1.2])
 
@@ -442,7 +461,7 @@ with col_list:
             with h_title:
                 st.markdown(f'<div class="rc-title">{html.escape(rec.get("trip_title") or "여행")}</div>',
                             unsafe_allow_html=True)
-            pin = _pt(rec.get("to_lat"), rec.get("to_lon")) or _pt(rec.get("from_lat"), rec.get("from_lon"))
+            pin = next((_pt(p["lat"], p["lon"]) for p in reversed(rec_points(rec)) if _pt(p["lat"], p["lon"])), None)
             with h_pin:
                 st.button("📍", key=f"fp_{rid}", help="지도에서 보기", disabled=pin is None,
                           on_click=set_focus, args=(pin[0] if pin else None, pin[1] if pin else None))
@@ -455,8 +474,11 @@ with col_list:
                     st.button("삭제 확인", key=f"dl_{rid}", type="primary", on_click=delete_record, args=(rid,),
                               use_container_width=True)
 
-            st.markdown(f'<div class="rc-line">🛫 {html.escape(rec.get("from_name", ""))} &nbsp;→&nbsp; '
-                        f'🛬 {html.escape(rec.get("to_name", ""))}</div>', unsafe_allow_html=True)
+            _pts = rec_points(rec)
+            _fn = _pts[0]["name"] if _pts else ""
+            _tn = _pts[-1]["name"] if _pts else ""
+            st.markdown(f'<div class="rc-line">🛫 {html.escape(_fn)} &nbsp;→&nbsp; '
+                        f'🛬 {html.escape(_tn)}</div>', unsafe_allow_html=True)
             s, e = parse_date(rec.get("start")), parse_date(rec.get("end"))
             stay = stay_text(s, e)
             st.markdown(f'<div class="rc-meta">📅 {fmt_date(s)} ~ {fmt_date(e)} '
