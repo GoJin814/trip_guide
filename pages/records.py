@@ -314,16 +314,16 @@ def open_form(rid: str, rec: dict) -> None:
     pts = ss[f"pts_{rid}"]
 
     st.markdown("**📍 방문 장소 (순서대로)**")
-    st.caption("아래 검색 결과를 고른 뒤 ‘📍 위치 변경’(그 장소를 바꿈) 또는 ‘➕ 뒤에 추가’(사이에 끼움)를 누르세요.")
+    st.caption("아래 검색 결과를 고른 뒤 🔄(그 장소를 바꿈) 또는 ⬇️(그 장소 뒤에 끼움)를 누르세요.")
     st.button("⬆️ 맨 앞에 추가", key=f"ins_top_{rid}", on_click=insert_point, args=(rid, -1),
               use_container_width=True)
     for i, p in enumerate(pts):
-        c_n, c_c, c_i, c_d = st.columns([4, 2.4, 2.6, 1])
+        c_n, c_c, c_i, c_d = st.columns([8, 1, 1, 1], vertical_alignment="center")
         c_n.markdown(f"{i + 1}. {p['name']}")
-        c_c.button("📍 위치 변경", key=f"chgpt_{rid}_{i}", on_click=change_point, args=(rid, i),
-                   use_container_width=True)
-        c_i.button("➕ 뒤에 추가", key=f"ins_{rid}_{i}", on_click=insert_point, args=(rid, i),
-                   use_container_width=True)
+        c_c.button("🔄", key=f"chgpt_{rid}_{i}", help="검색 결과로 이 장소 위치 변경",
+                   on_click=change_point, args=(rid, i))
+        c_i.button("⬇️", key=f"ins_{rid}_{i}", help="이 장소 뒤에 검색 결과 추가",
+                   on_click=insert_point, args=(rid, i))
         c_d.button("🗑️", key=f"delpt_{rid}_{i}", help="이 장소 삭제",
                    on_click=remove_point, args=(rid, i))
     if not pts:
