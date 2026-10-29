@@ -144,7 +144,7 @@ CSS = """
 
     /* ---- 일정 카드: 위/아래 여백 균형 ---- */
     div[data-testid="stVerticalBlockBorderWrapper"] {
-        padding: 0.3rem 0.75rem 0.55rem 0.75rem !important;
+        padding: 0.3rem 0.75rem 1.55rem 0.75rem !important;
         margin-bottom: 0.4rem !important;
         border-radius: 10px !important;
     }
@@ -197,11 +197,11 @@ CSS = """
     .st-key-topbar button {padding-left: 0.3rem !important; padding-right: 0.3rem !important; white-space: nowrap;}
 
     /* 여행 제목 */
-    .st-key-trip_title h1 {font-size: 1.2rem !important; font-weight: 800 !important; line-height: 1.3 !important;
-                           margin: 0.2rem 0 0.5rem 0 !important; padding: 0 !important; color: #111827 !important;}
 
     /* 지도: 정사각형 비율 */
     .st-key-mapbox {margin-bottom: 0 !important;}
+    /* 진행률 바: 지도와의 간격을 줄이기 위해 위로 당김 */
+    .st-key-progress_wrap {margin-top: -2.8rem !important;}
     .st-key-mapbox iframe {width: 100% !important; aspect-ratio: 1 / 1;}
 </style>
 """
@@ -499,8 +499,7 @@ def render_embedded_google_map(spots, done_states: list[bool]) -> None:
 
 # ---------- 화면 레이아웃 ----------
 _title = st.session_state.get("trip_title", DEFAULT_TITLE).strip() or DEFAULT_TITLE
-with st.container(key="trip_title"):
-    st.title(_title)
+st.markdown(f"##### {_title}")
 
 if st.session_state.get("msg"):
     st.toast(st.session_state.pop("msg"))
@@ -592,13 +591,18 @@ with col_ctrl:
                     unsafe_allow_html=True,
                 )
 
-                # 3줄째: 팁 (줄바꿈 유지)
-                tip_html = html.escape(spot["tip"]).replace("\n", "<br>")
-                st.markdown(
-                    f'<div style="font-size:0.78rem;color:#4B5563;line-height:1.4;padding-left:2px;">'
-                    f'💡 {tip_html}</div>',
-                    unsafe_allow_html=True,
-                )
+                # 3줄째: 메모/팁 (줄마다 "-" 표시, 줄바꿈 시 들여쓰기 유지)
+                tip_lines = [line.strip() for line in spot["tip"].split("\n") if line.strip()]
+                if tip_lines:
+                    tip_items = "".join(
+                        f'<div style="padding-left:0.9em;text-indent:-0.9em;">- {html.escape(line)}</div>'
+                        for line in tip_lines
+                    )
+                    st.markdown(
+                        f'<div style="font-size:0.78rem;color:#4B5563;line-height:1.4;padding-left:2px;">'
+                        f'{tip_items}</div>',
+                        unsafe_allow_html=True,
+                    )
 
     # 2열 그리드로 나란히 배치
     for i in range(0, len(spots), 2):
@@ -665,5 +669,6 @@ with col_ctrl:
 with col_map:
     total_spots = len(spots) if len(spots) > 0 else 1
     render_embedded_google_map(spots, done_flags)
-    st.progress(n_done / total_spots,
-                text=f"진행률: {n_done} / {len(spots)} 코스 완료 ({n_done * 100 // total_spots}%)")
+    with st.container(key="progress_wrap"):
+        st.progress(n_done / total_spots,
+                    text=f"진행률: {n_done} / {len(spots)} 코스 완료 ({n_done * 100 // total_spots}%)")
