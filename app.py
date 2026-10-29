@@ -423,7 +423,8 @@ CSS = """
     /* 여행 시작일 + 일정 보기: 한 줄 고정 */
     .st-key-daybar [data-testid="stHorizontalBlock"] {flex-direction: row !important; flex-wrap: nowrap !important; gap: 0.4rem !important;}
     .st-key-daybar [data-testid="stColumn"], .st-key-daybar [data-testid="column"] {min-width: 0 !important;}
-    .st-key-daybar input {min-height: 2.4rem !important;}
+    .st-key-daybar input {min-height: 2.4rem !important; font-size: 0.85rem !important; padding-left: 0.4rem !important; padding-right: 0.2rem !important;}
+    .st-key-daybar [data-testid="stDateInput"] {min-width: 0 !important;}
     .st-key-progress_row [data-testid="stHorizontalBlock"] {flex-direction: row !important; flex-wrap: nowrap !important; gap: 0.5rem !important; align-items: center !important;}
     .st-key-progress_row [data-testid="stColumn"], .st-key-progress_row [data-testid="column"] {min-width: 0 !important;}
     .st-key-progress_row div[data-baseweb="select"] > div {min-height: 2rem !important; font-size: 0.8rem !important;}
@@ -566,13 +567,19 @@ _day_opts = [0] + _days  # 0 = 전체
 if st.session_state.get("day_filter") not in _day_opts:
     st.session_state.day_filter = 0
 sel_day = st.session_state.day_filter
+_max_day = max((int(s["day"]) for s in all_spots), default=1)
+_trip_len = f"({_max_day - 1}박 {_max_day}일)"
+_row_style = ("height:2.4rem;display:flex;align-items:center;font-size:0.9rem;"
+              "font-weight:700;color:#374151;white-space:nowrap;")
 with st.container(key="daybar"):
-    d_c1, d_c2 = st.columns([1.2, 2])
-    with d_c1:
-        st.markdown('<div style="height:2.4rem;display:flex;align-items:center;font-size:0.9rem;'
-                    'font-weight:700;color:#374151;white-space:nowrap;">여행 시작:</div>', unsafe_allow_html=True)
-    with d_c2:
+    d_sp, d_lbl, d_date, d_len = st.columns([3, 1.1, 1.6, 1.1])
+    with d_lbl:
+        st.markdown(f'<div style="{_row_style}justify-content:flex-end;">여행 시작:</div>',
+                    unsafe_allow_html=True)
+    with d_date:
         st.date_input("여행 시작일", key="trip_start_input", label_visibility="collapsed")
+    with d_len:
+        st.markdown(f'<div style="{_row_style}color:#2563EB;">{_trip_len}</div>', unsafe_allow_html=True)
 
 spots = [s for s in all_spots if sel_day == 0 or int(s["day"]) == sel_day]
 done_flags = [st.session_state.done.get(s["id"], False) for s in spots]
@@ -672,6 +679,7 @@ with col_ctrl:
                 render_card(spots[i + 1])
 
 with col_map:
+    st.caption("💡 지도 하단 ‘➕ 일정 추가’와 ‘💾 저장/불러오기’ 버튼을 사용할 수 있어요.")
 
     map_data = [
         {"name": f"{s['name']} ({s.get('time', '')})" if s.get("time") else s["name"],
