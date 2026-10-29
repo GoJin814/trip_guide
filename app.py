@@ -13,7 +13,6 @@ import streamlit.components.v1 as components
 # ======================================================================
 DEFAULT_TITLE = "춘천 실시간 여행 트래커"
 SAVE_FILE = Path(__file__).with_name("trip_save.json")
-DAY_OPTIONS = [1, 2]
 
 # 기본 여행 코스 데이터 (장소명, 시간 분리)
 DEFAULT_SPOTS = [
@@ -62,7 +61,7 @@ def apply_payload(data: dict) -> None:
             day = int(s.get("day", 1))
             spots.append(dict(
                 id=sid,
-                day=day if day in DAY_OPTIONS else DAY_OPTIONS[-1],
+                day=max(1, day),
                 name=str(s["name"]),
                 time=str(s.get("time", "")),
                 lat=float(s["lat"]),
@@ -81,7 +80,7 @@ def apply_payload(data: dict) -> None:
     for sid, d in dones.items():
         ss[f"chk_{sid}"] = d
     # 이전 수정 폼 입력값 초기화
-    for k in [k for k in ss.keys() if str(k).startswith(("inp_name_", "inp_time_", "inp_day_", "inp_tip_"))]:
+    for k in [k for k in ss.keys() if str(k).startswith(("inp_name_", "inp_time_", "inp_start_", "inp_end_", "inp_day_", "inp_tip_"))]:
         del ss[k]
     ss.trip_title = str(data.get("page_title") or DEFAULT_TITLE)
     ss["title_input"] = ss.trip_title
@@ -203,7 +202,47 @@ CSS = """
     .st-key-topbar button {padding-left: 0.3rem !important; padding-right: 0.3rem !important; white-space: nowrap;}
 </style>
 """
-st.markdown(CSS, unsafe_allow_html=True)
+TIME_SLOTS = [f"{h:02d}:{m:02d}" for h in range(5, 24) for m in (0, 30)]
+DAY_PALETTE = [("#EFF6FF", "#60A5FA"), ("#FFF7ED", "#FB923C"), ("#F0FDF4", "#4ADE80"),
+               ("#FAF5FF", "#C084FC"), ("#FEF2F2", "#F87171"), ("#FEFCE8", "#FACC15")]
+
+
+def time_options(extra=None, with_all_day=False):
+    opts = (["종일"] if with_all_day else []) + TIME_SLOTS
+    if extra and extra not in opts:
+        opts.append(extra)
+    return opts
+
+
+def pick_index(opts, val):
+    return opts.index(val) if val in opts else 0
+
+
+def split_time(t):
+    t = (t or "").strip()
+    if "~" in t:
+        a, b = [x.strip() for x in t.split("~", 1)]
+        return a or "09:00", b or "10:00"
+    if t in ("", "종일"):
+        return "종일", "10:00"
+    return t, "10:00"
+
+
+def make_time(start, end):
+    return "종일" if start == "종일" else f"{start}~{end}"
+
+
+def day_color_css() -> str:
+    rules = []
+    for d in sorted({int(s["day"]) for s in st.session_state.spots_data}):
+        bg, bd = DAY_PALETTE[(max(d, 1) - 1) % len(DAY_PALETTE)]
+        sel = f'[class*="st-key-card_d{d}_"]'
+        rules.append(f'{sel}, {sel} [data-testid="stVerticalBlockBorderWrapper"] '
+                     f'{{background:{bg} !important; border-color:{bd} !important;}}')
+    return "<style>" + "\n".join(rules) + "</style>"
+
+
+st.markdown(CSS + day_color_css(), unsafe_allow_html=True)
 
 for s in st.session_state.spots_data:
     st.session_state.setdefault(f"chk_{s['id']}", False)
@@ -458,14 +497,22 @@ with col_ctrl:
             with st.popover("➕ 일정 추가", use_container_width=True):
                 st.markdown("##### 📍 새 장소 등록")
                 new_name = st.text_input("장소명", placeholder="예: 구봉산 카페거리")
-                new_time = st.text_input("시간", placeholder="예: 16:00~17:30")
-                new_day = st.selectbox("일차", DAY_OPTIONS, index=len(DAY_OPTIONS) - 1)
+                new_day = st.number_input("일차 (Day)", min_value=1, max_value=99, value=2, step=1)
+                new_start = st.selectbox("시작 시간", time_options(with_all_day=True),
+                                         index=pick_index(time_options(with_all_day=True), "09:00"),
+                                         key="new_start")
+                new_end = st.selectbox("완료 시간", time_options(),
+                                       index=pick_index(time_options(), "10:00"),
+                                       key="new_end", disabled=new_start == "종일")
+                new_time = make_time(new_start, new_end)
                 new_tip = st.text_input("메모/팁", placeholder="예: 소양강 조망 카페")
                 new_lat = st.number_input("위도(Lat)", value=37.8870, format="%.4f")
                 new_lon = st.number_input("경도(Lon)", value=127.7650, format="%.4f")
 
                 if st.button("추가하기", use_container_width=True):
-                    if new_name:
+                    if new_start != "종일" and new_end <= new_start:
+                        st.error("완료 시간은 시작 시간보다 늦어야 해요.")
+                    elif new_name:
                         new_id = f"custom_{uuid4().hex[:6]}"
                         st.session_state.spots_data.append(dict(
                             id=new_id, day=new_day, name=f"{len(spots)+1}. {new_name}",
@@ -505,25 +552,35 @@ with col_ctrl:
         checked = st.session_state.get(key, False)
         is_editing = st.session_state.editing_flags.get(sid, False)
 
-        with st.container(border=True, key=f"card_{sid}"):
+        with st.container(border=True, key=f"card_d{spot['day']}_{sid}"):
             # 1. 수정 모드일 때 (In-place 수정 폼)
             if is_editing:
                 st.markdown("**✏️ 일정 정보 수정**")
                 edit_name = st.text_input("장소명", value=spot["name"], key=f"inp_name_{sid}")
-                edit_time = st.text_input("시간", value=spot.get("time", ""), key=f"inp_time_{sid}")
-                edit_day = st.selectbox("일차 (Day)", DAY_OPTIONS,
-                                        index=DAY_OPTIONS.index(spot.get("day", 1)) if spot.get("day", 1) in DAY_OPTIONS else 0,
-                                        key=f"inp_day_{sid}")
+                s_start, s_end = split_time(spot.get("time", ""))
+                edit_start = st.selectbox("시작 시간", time_options(extra=s_start, with_all_day=True),
+                                          index=pick_index(time_options(extra=s_start, with_all_day=True), s_start),
+                                          key=f"inp_start_{sid}")
+                edit_end = st.selectbox("완료 시간", time_options(extra=s_end),
+                                        index=pick_index(time_options(extra=s_end), s_end),
+                                        key=f"inp_end_{sid}", disabled=edit_start == "종일")
+                edit_time = make_time(edit_start, edit_end)
+                edit_day = st.number_input("일차 (Day)", min_value=1, max_value=99,
+                                           value=max(1, int(spot.get("day", 1))), step=1,
+                                           key=f"inp_day_{sid}")
                 edit_tip = st.text_input("메모/팁", value=spot.get("tip", ""), key=f"inp_tip_{sid}")
 
                 b_save, b_cancel = st.columns(2)
                 if b_save.button("저장", key=f"save_{sid}", use_container_width=True):
-                    st.session_state.spots_data[idx]["name"] = edit_name
-                    st.session_state.spots_data[idx]["time"] = edit_time
-                    st.session_state.spots_data[idx]["day"] = edit_day
-                    st.session_state.spots_data[idx]["tip"] = edit_tip
-                    st.session_state.editing_flags[sid] = False
-                    st.rerun()
+                    if edit_start != "종일" and edit_end <= edit_start:
+                        st.error("완료 시간은 시작 시간보다 늦어야 해요.")
+                    else:
+                        st.session_state.spots_data[idx]["name"] = edit_name
+                        st.session_state.spots_data[idx]["time"] = edit_time
+                        st.session_state.spots_data[idx]["day"] = edit_day
+                        st.session_state.spots_data[idx]["tip"] = edit_tip
+                        st.session_state.editing_flags[sid] = False
+                        st.rerun()
                 if b_cancel.button("취소", key=f"cancel_{sid}", use_container_width=True):
                     st.session_state.editing_flags[sid] = False
                     st.rerun()
