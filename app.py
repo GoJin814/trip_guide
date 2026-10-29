@@ -145,7 +145,7 @@ CSS = """
     /* ---- 일정 카드: 위/아래 여백 균형 ---- */
     div[data-testid="stVerticalBlockBorderWrapper"] {
         padding: 0.3rem 0.75rem 1.55rem 0.75rem !important;
-        margin-bottom: 0.4rem !important;
+        margin-bottom: 0.7rem !important;
         border-radius: 10px !important;
     }
     [class*="st-key-card_"] [data-testid="stVerticalBlock"] {gap: 0.3rem !important;}
@@ -582,7 +582,7 @@ with col_ctrl:
                 # 2줄째: 시간 · 대기/완료 · Day
                 time_part = f"⏱ {spot['time']} &nbsp;" if spot.get("time") else ""
                 badge = ('<span style="background:#DCFCE7;color:#15803D;padding:1px 7px;'
-                         'border-radius:9999px;font-weight:700;">🛂 여행 완료</span>' if checked else
+                         'border-radius:9999px;font-weight:700;">🎫 여행 완료</span>' if checked else
                          '<span style="background:#E0F2FE;color:#0369A1;padding:1px 7px;'
                          'border-radius:9999px;font-weight:700;">🗺️ 여행 전</span>')
                 st.markdown(
@@ -648,7 +648,7 @@ with col_ctrl:
                         st.rerun()
 
         with top_c2:
-            with st.popover("💾 저장", use_container_width=True):
+            with st.popover("💾 저장 / 불러오기", use_container_width=True):
                 st.markdown("##### 💾 여행 저장 / 불러오기")
                 st.text_input("여행 제목", value=st.session_state.get("trip_title", DEFAULT_TITLE),
                               key="title_input", on_change=sync_title)
