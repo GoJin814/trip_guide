@@ -1,10 +1,6 @@
 import json
-from urllib.parse import quote
-
-import folium
 import streamlit as st
 import streamlit.components.v1 as components
-from streamlit_folium import st_folium
 
 st.set_page_config(
     page_title="춘천 실시간 여행 트래커",
@@ -13,10 +9,11 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+# 모바일 화면 최적화 스타일
 CSS = """
 <style>
-    .block-container {padding: 1.5rem 1rem 2rem 1rem !important;}
-    .stCheckbox label {font-size: 1.05rem !important; font-weight: 600 !important;}
+    .block-container {padding: 1.2rem 0.8rem 2rem 0.8rem !important;}
+    .stCheckbox label {font-size: 1.05rem !important; font-weight: 600 !important; cursor: pointer;}
     .badge {display:inline-block; padding:.2rem .6rem; border-radius:9999px;
             font-size:.8rem; font-weight:700; margin-right:.4rem;}
     .done {background:#DCFCE7; color:#15803D;}
@@ -26,6 +23,7 @@ CSS = """
 """
 st.markdown(CSS, unsafe_allow_html=True)
 
+# 여행 코스 데이터
 SPOTS = [
     dict(id="legoland", day=1, name="1. 레고랜드 코리아", category="테마파크 (종일)",
          lat=37.8845, lon=127.6975, desc="하중도 위치 테마파크 탐방",
@@ -45,119 +43,154 @@ SPOTS = [
 ]
 
 KEYS = [f"chk_{s['id']}" for s in SPOTS]
-ALL_COORDS = [[s["lat"], s["lon"]] for s in SPOTS]
 
+# 세션 초기화
 for k in KEYS:
     st.session_state.setdefault(k, False)
-
-try:
-    GMAPS_KEY = st.secrets.get("GOOGLE_MAPS_API_KEY")
-except Exception:
-    GMAPS_KEY = None
-
 
 def set_all(value: bool) -> None:
     for k in KEYS:
         st.session_state[k] = value
 
+# ---------- 웹 임베디드 구글 지도 (API 키 없이 iOS/안드로이드 완벽 지원) ----------
+def render_embedded_google_map(done_states: list[bool]) -> None:
+    data = [
+        {
+            "name": s["name"],
+            "lat": s["lat"],
+            "lon": s["lon"],
+            "desc": s["desc"],
+            "tip": s["tip"],
+            "done": d
+        }
+        for s, d in zip(SPOTS, done_states)
+    ]
+    spots_json = json.dumps(data, ensure_ascii=False)
 
-# ---------- Google Maps 딥링크 (API 키 불필요, iOS 구글지도 앱으로 열림) ----------
-def route_url() -> str:
-    pts = [f"{s['lat']},{s['lon']}" for s in SPOTS]
-    return ("https://www.google.com/maps/dir/?api=1&travelmode=driving"
-            f"&origin={pts[0]}&destination={pts[-1]}"
-            f"&waypoints={quote('|'.join(pts[1:-1]), safe='')}")
+    html_code = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+        <style>
+            html, body, #map {{
+                height: 100%;
+                width: 100%;
+                margin: 0;
+                padding: 0;
+                border-radius: 12px;
+            }}
+            .custom-pin {{
+                border-radius: 50%;
+                width: 26px;
+                height: 26px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: white;
+                font-weight: bold;
+                font-size: 13px;
+                border: 2px solid white;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+            }}
+            .pin-done {{ background-color: #16A34A; }}
+            .pin-yet {{ background-color: #2563EB; }}
+        </style>
+    </head>
+    <body>
+        <div id="map"></div>
+        <script>
+            const SPOTS = {spots_json};
 
+            // 1. 지도 생성
+            const map = L.map('map', {{
+                zoomControl: true,
+                attributionControl: false
+            }}).setView([37.9150, 127.7550], 11);
 
-def spot_url(s: dict) -> str:
-    return f"https://www.google.com/maps/search/?api=1&query={s['lat']},{s['lon']}"
+            // 2. 실제 Google Maps 도로 지도 타일 레이어 연동
+            L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={{x}}&y={{y}}&z={{z}}', {{
+                maxZoom: 19
+            }}).addTo(map);
 
+            // 3. 전체 예정 코스 점선 연결
+            const allCoords = SPOTS.map(s => [s.lat, s.lon]);
+            L.polyline(allCoords, {{
+                color: '#64748B',
+                weight: 3,
+                dashArray: '6, 8',
+                opacity: 0.65
+            }}).addTo(map);
 
-# ---------- Google Maps JS (API 키 필요) ----------
-GMAPS_HTML = """
-<div id="map" style="height:100%;width:100%;border-radius:12px"></div>
-<script>
-const SPOTS = __SPOTS__;
-function initMap() {
-  const map = new google.maps.Map(document.getElementById("map"), {
-    mapTypeControl: false, streetViewControl: false, fullscreenControl: false,
-    gestureHandling: "greedy"
-  });
-  const bounds = new google.maps.LatLngBounds();
-  const pos = SPOTS.map(s => ({lat: s.lat, lng: s.lon}));
+            // 4. 방문 완료된 구간 실시간 파란색 굵은 실선 연결
+            const visitedCoords = SPOTS.filter(s => s.done).map(s => [s.lat, s.lon]);
+            if (visitedCoords.length >= 2) {{
+                L.polyline(visitedCoords, {{
+                    color: '#2563EB',
+                    weight: 6,
+                    opacity: 0.95
+                }}).addTo(map);
+            }}
 
-  new google.maps.Polyline({
-    path: pos, map, strokeOpacity: 0,
-    icons: [{icon: {path: "M 0,-1 0,1", strokeOpacity: 0.7, strokeColor: "#94A3B8", scale: 3},
-             offset: "0", repeat: "14px"}]
-  });
-  const visited = pos.filter((_, i) => SPOTS[i].done);
-  if (visited.length >= 2)
-    new google.maps.Polyline({path: visited, map, strokeColor: "#2563EB",
-                              strokeOpacity: 0.9, strokeWeight: 6});
+            // 5. 마커 핀 및 상세 팝업창
+            const bounds = [];
+            SPOTS.forEach((spot, i) => {{
+                bounds.push([spot.lat, spot.lon]);
+                const pinClass = spot.done ? 'custom-pin pin-done' : 'custom-pin pin-yet';
+                const iconSymbol = spot.done ? '✓' : (i + 1);
 
-  const info = new google.maps.InfoWindow();
-  SPOTS.forEach((s, i) => {
-    const m = new google.maps.Marker({
-      position: pos[i], map, title: s.name,
-      icon: "https://maps.google.com/mapfiles/ms/icons/" + (s.done ? "green" : "blue") + "-dot.png"
-    });
-    m.addListener("click", () => {
-      info.setContent(
-        "<div style='font-family:sans-serif;max-width:200px'><b>" + s.name + "</b><br>" +
-        "<span style='font-size:12px;color:#059669'>" + (s.done ? "🎉 방문 완료" : "⏳ 예정지") + "</span>" +
-        "<p style='margin:4px 0;font-size:12px'>" + s.desc + "</p>" +
-        "<div style='background:#FEF3C7;color:#B45309;padding:3px;border-radius:4px;font-size:11px'>" +
-        s.tip + "</div></div>");
-      info.open(map, m);
-    });
-    bounds.extend(pos[i]);
-  });
-  map.fitBounds(bounds, 40);
-}
-</script>
-<script async src="https://maps.googleapis.com/maps/api/js?key=__KEY__&callback=initMap&language=ko"></script>
-"""
+                const icon = L.divIcon({{
+                    className: '',
+                    html: `<div class="${{pinClass}}">${{iconSymbol}}</div>`,
+                    iconSize: [26, 26],
+                    iconAnchor: [13, 13]
+                }});
 
+                const statusText = spot.done 
+                    ? "<span style='color:#16A34A;font-weight:bold;'>🎉 방문 완료</span>" 
+                    : "<span style='color:#2563EB;font-weight:bold;'>⏳ 예정지</span>";
 
-def google_map(done: list[bool]) -> None:
-    data = [{**{k: s[k] for k in ("name", "lat", "lon", "desc", "tip")}, "done": d}
-            for s, d in zip(SPOTS, done)]
-    html = (GMAPS_HTML.replace("__SPOTS__", json.dumps(data, ensure_ascii=False))
-                      .replace("__KEY__", GMAPS_KEY))
-    components.html(html, height=480)
+                const popupContent = `
+                    <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif; min-width:170px;">
+                        <b style="font-size:14px;color:#1E3A8A;">${{spot.name}}</b><br>
+                        ${{statusText}}
+                        <p style="margin:4px 0;font-size:12px;color:#334155;">${{spot.desc}}</p>
+                        <div style="background:#FEF3C7;color:#B45309;padding:3px 6px;border-radius:4px;font-size:11px;">
+                            💡 ${{spot.tip}}
+                        </div>
+                    </div>
+                `;
 
+                L.marker([spot.lat, spot.lon], {{ icon: icon }})
+                    .bindPopup(popupContent)
+                    .addTo(map);
+            }});
 
-# ---------- Folium (API 키 없을 때 대체) ----------
-def folium_map(done: list[bool]) -> None:
-    m = folium.Map(location=[37.9150, 127.7550], zoom_start=11, tiles="CartoDB positron")
-    folium.PolyLine(ALL_COORDS, color="#94A3B8", weight=3, opacity=0.6,
-                    dash_array="6, 6").add_to(m)
-    visited = [c for c, d in zip(ALL_COORDS, done) if d]
-    if len(visited) >= 2:
-        folium.PolyLine(visited, color="#2563EB", weight=6, opacity=0.9).add_to(m)
-    for s, d in zip(SPOTS, done):
-        folium.Marker(
-            [s["lat"], s["lon"]], tooltip=s["name"],
-            popup=folium.Popup(f"<b>{s['name']}</b><br>{s['desc']}<br>💡 {s['tip']}", max_width=220),
-            icon=folium.Icon(color="green" if d else "blue",
-                             icon="ok-sign" if d else "map-marker", prefix="glyphicon"),
-        ).add_to(m)
-    st_folium(m, height=480, use_container_width=True, returned_objects=[], key="trip_map")
+            map.fitBounds(bounds, {{ padding: [30, 30] }});
+        </script>
+    </body>
+    </html>
+    """
+    components.html(html_code, height=490)
 
-
-# ---------- 화면 ----------
+# ---------- Streamlit 화면 구성 ----------
 st.title("🚗 춘천 실시간 여행 트래커")
-st.caption("📱 장소 방문을 체크하면 지도에 이동 완료 경로(실선)가 실시간으로 연결됩니다.")
+st.caption("📱 일정 체크 시 앱 화면 안의 구글 지도에 완료 이동 경로(실선)가 실시간으로 연결됩니다.")
 
 col_map, col_ctrl = st.columns([1.3, 1.0])
 
+done_flags = [st.session_state[k] for k in KEYS]
+n_done = sum(done_flags)
+
+# 컨트롤 영역
 with col_ctrl:
     st.subheader("🚩 방문 일정 체크")
     b1, b2 = st.columns(2)
     b1.button("🔄 전체 초기화", on_click=set_all, args=(False,), use_container_width=True)
     b2.button("✅ 모두 완료", on_click=set_all, args=(True,), use_container_width=True)
-    st.link_button("🧭 구글지도 앱으로 전체 경로 열기", route_url(), use_container_width=True)
 
     for spot, key in zip(SPOTS, KEYS):
         checked = st.session_state[key]
@@ -171,15 +204,9 @@ with col_ctrl:
             )
             st.checkbox(spot["name"], key=key)
             st.caption(f"💡 {spot['tip']}")
-            st.link_button("📍 구글지도에서 보기", spot_url(spot))
 
-done_flags = [st.session_state[k] for k in KEYS]
-n_done = sum(done_flags)
-
+# 지도 영역
 with col_map:
     st.progress(n_done / len(SPOTS),
                 text=f"진행률: {n_done} / {len(SPOTS)} 코스 완료 ({n_done * 100 // len(SPOTS)}%)")
-    if GMAPS_KEY:
-        google_map(done_flags)
-    else:
-        folium_map(done_flags)
+    render_embedded_google_map(done_flags)
