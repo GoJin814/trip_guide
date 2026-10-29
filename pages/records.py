@@ -73,6 +73,7 @@ PTR_JS = """
 CSS = """
 <style>
     .block-container {padding: 3.8rem 0.6rem 2rem 0.6rem !important;}
+    [data-testid="stSidebarCollapsedControl"], [data-testid="collapsedControl"] {display: none !important;}
     *, *::before, *::after {overscroll-behavior-y: auto !important;}
     .st-key-mapbox {margin-bottom: 0 !important;}
     .st-key-mapbox iframe {touch-action: pan-y !important; display: block;}
@@ -282,6 +283,18 @@ def remove_point(rid: str, idx: int) -> None:
         del pts[idx]
 
 
+def change_point(rid: str, idx: int) -> None:
+    """검색 결과에서 고른 장소로 이 칸의 이름과 위치를 바꿈"""
+    ss = st.session_state
+    pts = ss.get(f"pts_{rid}", [])
+    res = ss.get(f"res_{rid}") or []
+    if not res or not (0 <= idx < len(pts)):
+        return
+    i = min(max(int(ss.get(f"pick_{rid}", 0)), 0), len(res) - 1)
+    p = res[i]
+    pts[idx] = {"name": p["name"], "lat": round(p["lat"], 4), "lon": round(p["lon"], 4)}
+
+
 def open_form(rid: str, rec: dict) -> None:
     ss = st.session_state
     pts_init(rid, rec)
@@ -289,9 +302,12 @@ def open_form(rid: str, rec: dict) -> None:
 
     st.markdown("**📍 방문 장소 (순서대로)**")
     if pts:
+        st.caption("장소를 바꾸려면 아래에서 검색 결과를 고른 뒤 ‘위치 변경’을 누르세요.")
         for i, p in enumerate(pts):
-            c_n, c_d = st.columns([8, 1])
+            c_n, c_c, c_d = st.columns([5, 3, 1])
             c_n.markdown(f"{i + 1}. {p['name']}")
+            c_c.button("📍 위치 변경", key=f"chgpt_{rid}_{i}", on_click=change_point, args=(rid, i),
+                       use_container_width=True)
             c_d.button("🗑️", key=f"delpt_{rid}_{i}", help="이 장소 삭제",
                        on_click=remove_point, args=(rid, i))
     else:
