@@ -201,7 +201,7 @@ CSS = """
     /* 지도: 정사각형 비율 */
     .st-key-mapbox {margin-bottom: 0 !important;}
     /* 진행률 바: 지도와의 간격을 줄이기 위해 위로 당김 */
-    .st-key-progress_wrap {margin-top: -2.8rem !important;}
+    .st-key-progress_wrap {margin-top: -3.8rem !important;}
     .st-key-mapbox iframe {width: 100% !important; aspect-ratio: 1 / 1;}
 </style>
 """
