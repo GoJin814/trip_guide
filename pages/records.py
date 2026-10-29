@@ -73,7 +73,18 @@ PTR_JS = """
 CSS = """
 <style>
     .block-container {padding: 3.8rem 0.6rem 2rem 0.6rem !important;}
-    [data-testid="stSidebarCollapsedControl"], [data-testid="collapsedControl"] {display: none !important;}
+    [data-testid="stExpandSidebarButton"], [data-testid="stSidebarCollapseButton"],
+    [data-testid="stSidebarCollapsedControl"], [data-testid="collapsedControl"],
+    [data-testid="stSidebar"] {display: none !important;}
+    [class*="st-key-ptrow_"] [data-testid="stHorizontalBlock"] {
+        flex-direction: row !important; flex-wrap: nowrap !important; gap: 0.3rem !important; align-items: center !important;}
+    [class*="st-key-ptrow_"] [data-testid="stColumn"], [class*="st-key-ptrow_"] [data-testid="column"] {min-width: 0 !important;}
+    [class*="st-key-ptrow_"] [data-testid="stColumn"]:first-child, [class*="st-key-ptrow_"] [data-testid="column"]:first-child {
+        flex: 1 1 0 !important; width: auto !important;}
+    [class*="st-key-ptrow_"] [data-testid="stColumn"]:nth-child(n+2), [class*="st-key-ptrow_"] [data-testid="column"]:nth-child(n+2) {
+        flex: 0 0 2.3rem !important; width: 2.3rem !important;}
+    [class*="st-key-ptrow_"] button {min-height: 2.2rem !important; height: 2.2rem !important; width: 100% !important; padding: 0 !important;}
+    [class*="st-key-ptrow_"] [data-testid="stMarkdownContainer"] p {margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;}
     *, *::before, *::after {overscroll-behavior-y: auto !important;}
     .st-key-mapbox {margin-bottom: 0 !important;}
     .st-key-mapbox iframe {touch-action: pan-y !important; display: block;}
@@ -318,14 +329,15 @@ def open_form(rid: str, rec: dict) -> None:
     st.button("⬆️ 맨 앞에 추가", key=f"ins_top_{rid}", on_click=insert_point, args=(rid, -1),
               use_container_width=True)
     for i, p in enumerate(pts):
-        c_n, c_c, c_i, c_d = st.columns([8, 1, 1, 1], vertical_alignment="center")
-        c_n.markdown(f"{i + 1}. {p['name']}")
-        c_c.button("🔄", key=f"chgpt_{rid}_{i}", help="검색 결과로 이 장소 위치 변경",
-                   on_click=change_point, args=(rid, i))
-        c_i.button("⬇️", key=f"ins_{rid}_{i}", help="이 장소 뒤에 검색 결과 추가",
-                   on_click=insert_point, args=(rid, i))
-        c_d.button("🗑️", key=f"delpt_{rid}_{i}", help="이 장소 삭제",
-                   on_click=remove_point, args=(rid, i))
+        with st.container(key=f"ptrow_{rid}_{i}"):
+            c_n, c_c, c_i, c_d = st.columns([8, 1, 1, 1], vertical_alignment="center")
+            c_n.markdown(f"{i + 1}. {p['name']}")
+            c_c.button("🔄", key=f"chgpt_{rid}_{i}", help="검색 결과로 이 장소 위치 변경",
+                       on_click=change_point, args=(rid, i))
+            c_i.button("⬇️", key=f"ins_{rid}_{i}", help="이 장소 뒤에 검색 결과 추가",
+                       on_click=insert_point, args=(rid, i))
+            c_d.button("🗑️", key=f"delpt_{rid}_{i}", help="이 장소 삭제",
+                       on_click=remove_point, args=(rid, i))
     if not pts:
         st.caption("장소가 없어요. 위 검색 결과에서 ‘⬆️ 맨 앞에 추가’로 넣어 주세요.")
 
@@ -520,3 +532,4 @@ with col_list:
             if memo_lines:
                 items = "".join(f"<div>- {html.escape(ln)}</div>" for ln in memo_lines)
                 st.markdown(f'<div class="rc-memo">{items}</div>', unsafe_allow_html=True)
+            st.markdown('<div style="height:0.9rem;"></div>', unsafe_allow_html=True)  # 카드 아래 여백
