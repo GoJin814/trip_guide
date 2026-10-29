@@ -396,7 +396,7 @@ CSS = """
     div[data-testid="stVerticalBlockBorderWrapper"] {
         padding: 0.3rem 0.75rem 0.3rem 0.75rem !important; margin-bottom: 0.4rem !important; border-radius: 10px !important;
     }
-    [class*="st-key-card_"] [data-testid="stVerticalBlock"] {gap: 0.5rem !important;}
+    [class*="st-key-card_"] [data-testid="stVerticalBlock"] {gap: 0.3rem !important;}
     [class*="st-key-card_"] [data-testid="stCaptionContainer"] {
         font-size: 0.78rem !important; color: #4B5563 !important; line-height: 1.3 !important; padding-left: 2px;
     }
@@ -405,7 +405,7 @@ CSS = """
     }
     [class*="st-key-card_"] [data-testid="stColumn"], [class*="st-key-card_"] [data-testid="column"] {min-width: 0 !important;}
 
-    [class*="st-key-hdr_"] [data-testid="stHorizontalBlock"] {gap: 0.3rem !important;}
+    [class*="st-key-hdr_"] [data-testid="stHorizontalBlock"] {gap: 0.5rem !important;}
     [class*="st-key-hdr_"] [data-testid="stColumn"]:nth-child(1), [class*="st-key-hdr_"] [data-testid="column"]:nth-child(1) {flex: 0 0 1.8rem !important; width: 1.8rem !important;}
     [class*="st-key-hdr_"] [data-testid="stColumn"]:nth-child(2), [class*="st-key-hdr_"] [data-testid="column"]:nth-child(2) {flex: 1 1 0 !important; width: auto !important;}
     [class*="st-key-hdr_"] [data-testid="stColumn"]:nth-child(n+3), [class*="st-key-hdr_"] [data-testid="column"]:nth-child(n+3) {flex: 0 0 1.2rem !important; width: 1.2rem !important;}
