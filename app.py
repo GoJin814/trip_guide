@@ -537,7 +537,6 @@ if isinstance(_pick, dict):
 # ======================================================================
 # 대화상자 (일정 추가 / 저장·불러오기)
 # ======================================================================
-@st.dialog("➕ 새 장소 추가")
 def tab_nav(current: str) -> None:
     """페이지 제목 위 탭 메뉴. 현재 탭은 굵게 표시."""
     cols = st.columns([1.4, 1.4, 4])
@@ -624,6 +623,7 @@ def send_to_records_dialog() -> None:
             st.error("기록 저장에 실패했어요. 잠시 후 다시 시도해 주세요.")
 
 
+@st.dialog("➕ 새 장소 추가")
 def add_spot_dialog() -> None:
     ss = st.session_state
     st.caption("💡 지도를 누르면 그 위치 좌표가 자동 입력돼요.")
@@ -762,7 +762,7 @@ sync_poll()
 # ======================================================================
 _title = st.session_state.get("trip_title", DEFAULT_TITLE).strip() or DEFAULT_TITLE
 tab_nav("여행 정보")
-st.markdown(f"<div style='font-size: 1.6rem; font-weight: 800; padding-bottom: 0.3rem;'>🚞 {_title}</div>",
+st.markdown(f"<div style='font-size: 1.6rem; font-weight: 800; padding-bottom: 0.3rem;'>{_title}</div>",
             unsafe_allow_html=True)
 
 if st.session_state.get("msg"):
