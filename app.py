@@ -1,5 +1,6 @@
 import copy
 import html
+import urllib.request
 import json
 import re
 from datetime import datetime
@@ -122,11 +123,74 @@ def load_from_upload() -> None:
         st.session_state.msg = "⚠️ 올바른 일정 파일이 아니에요."
 
 
+# ---- 공유 저장소 (Firebase Realtime Database REST API) ----
+SHARED_PATH = "trips/shared"
+
+
+def db_base_url() -> str:
+    try:
+        return str(st.secrets["FIREBASE_DB_URL"]).rstrip("/")
+    except Exception:
+        return ""
+
+
+def fetch_remote():
+    """(성공 여부, 데이터). 네트워크 오류는 (False, None)."""
+    base = db_base_url()
+    if not base:
+        return False, None
+    try:
+        with urllib.request.urlopen(f"{base}/{SHARED_PATH}.json", timeout=5) as r:
+            data = json.loads(r.read().decode("utf-8"))
+        if data is None or (isinstance(data, dict) and "spots" in data):
+            return True, data
+        return False, None
+    except Exception:
+        return False, None
+
+
+def push_remote(payload: dict) -> bool:
+    base = db_base_url()
+    if not base:
+        return False
+    req = urllib.request.Request(
+        f"{base}/{SHARED_PATH}.json",
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        method="PUT",
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=5):
+            return True
+    except Exception:
+        return False
+
+
+def canon(payload: dict) -> str:
+    """비교용 문자열 (저장 시각은 제외)"""
+    return json.dumps({k: v for k, v in payload.items() if k != "saved_at"},
+                      ensure_ascii=False, sort_keys=True)
+
+
 # ---- 세션 초기화 ----
 if "spots_data" not in st.session_state:
     st.session_state.spots_data = copy.deepcopy(DEFAULT_SPOTS)
     st.session_state.editing_flags = {}
     st.session_state.trip_title = DEFAULT_TITLE
+
+# 공유 데이터 최초 불러오기
+if "synced_json" not in st.session_state:
+    st.session_state.synced_json = None
+    _ok, _remote = fetch_remote()
+    if _ok:
+        if _remote is None:
+            st.session_state.synced_json = canon(build_payload())
+        else:
+            try:
+                apply_payload(_remote)
+                st.session_state.synced_json = canon(build_payload())
+            except Exception:
+                pass
 
 st.set_page_config(
     page_title=st.session_state.get("trip_title", DEFAULT_TITLE).strip() or DEFAULT_TITLE,
@@ -145,7 +209,7 @@ CSS = """
     /* ---- 일정 카드: 위/아래 여백 균형 ---- */
     div[data-testid="stVerticalBlockBorderWrapper"] {
         padding: 0.3rem 0.75rem 0.3rem 0.75rem !important;
-        margin-bottom: 0.1rem !important;
+        margin-bottom: 0.4rem !important;
         border-radius: 10px !important;
     }
     [class*="st-key-card_"] [data-testid="stVerticalBlock"] {gap: 0.3rem !important;}
@@ -201,7 +265,7 @@ CSS = """
     /* 지도: 정사각형 비율 */
     .st-key-mapbox {margin-bottom: 0 !important;}
     /* 진행률 바: 지도와의 간격을 줄이기 위해 위로 당김 */
-    .st-key-progress_wrap {margin-top: -4.8rem !important;}
+    .st-key-progress_wrap {margin-top: -2.8rem !important;}
     .st-key-mapbox iframe {width: 100% !important; aspect-ratio: 1 / 1;}
 </style>
 """
@@ -498,6 +562,27 @@ def render_embedded_google_map(spots, done_states: list[bool]) -> None:
 
 
 # ---------- 화면 레이아웃 ----------
+@st.fragment(run_every=3)
+def sync_poll() -> None:
+    """3초마다 공유 데이터를 확인해서, 다른 기기에서 바뀌었으면 화면을 갱신"""
+    ok, remote = fetch_remote()
+    if not ok:
+        return
+    if remote is None:
+        if st.session_state.synced_json is None:
+            st.session_state.synced_json = canon(build_payload())
+        return
+    if canon(remote) != st.session_state.synced_json:
+        try:
+            apply_payload(remote)
+        except Exception:
+            return
+        st.session_state.synced_json = canon(build_payload())
+        st.rerun(scope="app")
+
+
+sync_poll()
+
 _title = st.session_state.get("trip_title", DEFAULT_TITLE).strip() or DEFAULT_TITLE
 st.markdown(f"##### {_title}")
 
@@ -674,3 +759,10 @@ with col_map:
     with st.container(key="progress_wrap"):
         st.progress(n_done / total_spots,
                     text=f"진행률: {n_done} / {len(spots)} 코스 완료 ({n_done * 100 // total_spots}%)")
+
+# ---- 변경 사항 공유 (값이 실제로 바뀐 경우에만 전송) ----
+if st.session_state.synced_json is not None:
+    _cur = build_payload()
+    _cur_json = canon(_cur)
+    if _cur_json != st.session_state.synced_json and push_remote(_cur):
+        st.session_state.synced_json = _cur_json
