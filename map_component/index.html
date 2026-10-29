@@ -21,13 +21,29 @@
     box-shadow: 0 0 0 2px rgba(37,99,235,0.35); }
   .ctl-box a { width: auto !important; min-width: 30px; padding: 0 7px; font-size: 12px; font-weight: 700;
     line-height: 30px; color: #1E3A8A; text-decoration: none; white-space: nowrap; }
+  .ctl-zoom a { font-size: 18px !important; line-height: 28px !important; }
   #status { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); z-index: 1000;
     background: rgba(15,23,42,0.85); color: #fff; font-size: 12px; padding: 5px 10px; border-radius: 8px;
     display: none; pointer-events: none; white-space: nowrap; }
+  /* 지도 하단 버튼 줄: 가운데 버튼이 정확히 가운데에 오도록 3칸(1fr auto 1fr) 격자 */
+  #bbar { position: absolute; left: 8px; right: 8px; bottom: 10px; z-index: 1000; display: none;
+    grid-template-columns: 1fr auto 1fr; gap: 6px; align-items: center; }
+  #bbar a { background: #fff; border: 2px solid rgba(0,0,0,0.2); border-radius: 4px; padding: 0 8px; height: 30px;
+    line-height: 26px; font-size: 12px; font-weight: 700; color: #1E3A8A; text-decoration: none; white-space: nowrap;
+    box-shadow: 0 1px 5px rgba(0,0,0,0.25); cursor: pointer; }
+  #bbar #b-add { justify-self: start; }
+  #bbar #b-save { justify-self: end; }
 </style>
 </head>
 <body>
-<div id="map"><div id="status"></div></div>
+<div id="map">
+  <div id="status"></div>
+  <div id="bbar">
+    <a id="b-add" title="일정 추가">➕ 일정 추가</a>
+    <a id="b-order" title="순서 변경">🔀 순서 변경</a>
+    <a id="b-save" title="저장 또는 불러오기">💾 저장/불러오기</a>
+  </div>
+</div>
 <script>
 (function () {
   let map = null, layer = null, userLayer = null, placesLayer = null;
@@ -35,6 +51,7 @@
   let placeMarkers = [], lastPlacesKey = null, lastSel = null;
   let compact = false;        // 검색 결과 미리보기(대화상자용) 모드: 버튼 없이 작게
   let autoFit = true;
+  let focusMode = false;      // 📍로 한 장소에 확대된 상태 → "−"를 누르면 전체 보기로
   let initialFitDone = false;
   let busy = false;
   let lastFocus = null;
@@ -69,12 +86,20 @@
     map.fitBounds(pts, { padding: [30, 30], maxZoom: 16, animate: !!animate });
     busy = false;
     autoFit = true;
+    focusMode = false;
+  }
+  function zoomOutSmart() {
+    if (focusMode) fitAll(true);   // 한 장소 확대 상태에서는 "−" 한 번으로 기본 축적(전체 보기)
+    else map.zoomOut();
   }
   function focusOn(lat, lon) {
     busy = true;
     map.flyTo([lat, lon], Math.max(map.getZoom(), 15), { duration: 0.6 });
     busy = false;
     autoFit = false;
+    focusMode = true;
+    // 지도가 화면 위쪽에 있으면 페이지를 위로 스크롤해서 지도가 바로 보이게 함 (Streamlit 쪽에서 처리)
+    window.parent.postMessage({ type: 'trip-scroll-map' }, '*');
   }
   function locate(btn) {
     if (!navigator.geolocation) { setStatus('이 브라우저는 위치 기능을 지원하지 않아요'); return; }
@@ -97,11 +122,11 @@
       setStatus(err && err.code === 1 ? '위치 권한이 거부됐어요' : '현재 위치를 찾지 못했어요');
     }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 });
   }
-  function addBar(position, items) {
+  function addBar(position, items, cls) {
     const C = L.Control.extend({
       options: { position: position },
       onAdd: function () {
-        const box = L.DomUtil.create('div', 'leaflet-bar ctl-box');
+        const box = L.DomUtil.create('div', 'leaflet-bar ctl-box ' + (cls || ''));
         items.forEach(function (it) {
           const a = L.DomUtil.create('a', '', box);
           a.href = '#'; a.title = it.title; a.textContent = it.text;
@@ -116,23 +141,28 @@
 
   function ensureMap() {
     if (map) return;
-    map = L.map('map', { zoomControl: true, attributionControl: false }).setView([37.915, 127.755], 11);
+    map = L.map('map', { zoomControl: false, attributionControl: false }).setView([37.915, 127.755], 11);
     L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { maxZoom: 19 }).addTo(map);
     layer = L.layerGroup().addTo(map);
     placesLayer = L.layerGroup().addTo(map);
     userLayer = L.layerGroup().addTo(map);
 
     if (!compact) {
+      addBar('topleft', [
+        { text: '+', title: '확대', fn: function () { map.zoomIn(); } },
+        { text: '−', title: '축소 (한 번 누르면 기본 축적)', fn: function () { zoomOutSmart(); } }
+      ], 'ctl-zoom');
       addBar('topright', [
         { text: '전체 보기', title: '전체 일정 보기', fn: function () { fitAll(true); } },
         { text: '내 위치', title: '현재 내 위치로 이동', fn: function (a) { locate(a); } }
       ]);
-      addBar('bottomleft', [
-        { text: '➕ 일정 추가', title: '일정 추가', fn: function () { sendAction('add'); } }
-      ]);
-      addBar('bottomright', [
-        { text: '💾 저장/불러오기', title: '저장 또는 불러오기', fn: function () { sendAction('save'); } }
-      ]);
+
+      // 하단 버튼 줄 (일정 추가 | 순서 변경 | 저장/불러오기)
+      const bbar = document.getElementById('bbar');
+      L.DomEvent.disableClickPropagation(bbar);
+      document.getElementById('b-add').addEventListener('click', function (e) { e.preventDefault(); sendAction('add'); });
+      document.getElementById('b-order').addEventListener('click', function (e) { e.preventDefault(); sendAction('reorder'); });
+      document.getElementById('b-save').addEventListener('click', function (e) { e.preventDefault(); sendAction('save'); });
     }
 
     map.on('dragstart', function () { autoFit = false; });
@@ -182,6 +212,7 @@
   function render(args) {
     compact = !!args.compact;
     ensureMap();
+    document.getElementById('bbar').style.display = compact ? 'none' : 'grid';
     const spots = args.spots || [];
     lastSpots = spots;
     layer.clearLayers();
