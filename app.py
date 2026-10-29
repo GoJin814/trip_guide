@@ -52,7 +52,7 @@ def set_all(value: bool) -> None:
     for k in KEYS:
         st.session_state[k] = value
 
-# ---------- 웹 임베디드 구글 지도 (API 키 없이 iOS/안드로이드 완벽 지원) ----------
+# ---------- 웹 임베디드 구글 지도 (내 위치 GPS 버튼 탑재) ----------
 def render_embedded_google_map(done_states: list[bool]) -> None:
     data = [
         {
@@ -82,6 +82,7 @@ def render_embedded_google_map(done_states: list[bool]) -> None:
                 margin: 0;
                 padding: 0;
                 border-radius: 12px;
+                position: relative;
             }}
             .custom-pin {{
                 border-radius: 50%;
@@ -98,10 +99,76 @@ def render_embedded_google_map(done_states: list[bool]) -> None:
             }}
             .pin-done {{ background-color: #16A34A; }}
             .pin-yet {{ background-color: #2563EB; }}
+            
+            /* 구글 맵 스타일 내 위치 플로팅 버튼 */
+            .location-btn {{
+                position: absolute;
+                top: 12px;
+                right: 12px;
+                z-index: 1000;
+                background: white;
+                border: none;
+                width: 44px;
+                height: 44px;
+                border-radius: 8px;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                outline: none;
+            }}
+            .location-btn:active {{
+                background: #F1F5F9;
+                transform: scale(0.95);
+            }}
+            .location-btn svg {{
+                width: 24px;
+                height: 24px;
+                fill: #4B5563;
+            }}
+            .location-btn.active svg {{
+                fill: #2563EB;
+            }}
+
+            /* 내 위치 파란 점 펄스 애니메이션 */
+            .user-pulse {{
+                width: 18px;
+                height: 18px;
+                background-color: #2563EB;
+                border: 3px solid white;
+                border-radius: 50%;
+                box-shadow: 0 0 10px rgba(37,99,235,0.8);
+                position: relative;
+            }}
+            .user-pulse::after {{
+                content: '';
+                position: absolute;
+                top: -6px;
+                left: -6px;
+                width: 24px;
+                height: 24px;
+                border-radius: 50%;
+                border: 2px solid #2563EB;
+                animation: pulse 1.6s infinite ease-out;
+                opacity: 0;
+            }}
+            @keyframes pulse {{
+                0% {{ transform: scale(0.5); opacity: 1; }}
+                100% {{ transform: scale(1.8); opacity: 0; }}
+            }}
         </style>
     </head>
     <body>
-        <div id="map"></div>
+        <div id="map">
+            <!-- 내 위치 GPS 버튼 -->
+            <button class="location-btn" id="locBtn" onclick="findMyLocation()" title="내 위치로 이동">
+                <svg viewBox="0 0 24 24">
+                    <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/>
+                </svg>
+            </button>
+        </div>
+
         <script>
             const SPOTS = {spots_json};
 
@@ -111,12 +178,12 @@ def render_embedded_google_map(done_states: list[bool]) -> None:
                 attributionControl: false
             }}).setView([37.9150, 127.7550], 11);
 
-            // 2. 실제 Google Maps 도로 지도 타일 레이어 연동
+            // 2. Google Maps 타일 레이어
             L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={{x}}&y={{y}}&z={{z}}', {{
                 maxZoom: 19
             }}).addTo(map);
 
-            // 3. 전체 예정 코스 점선 연결
+            // 3. 전체 예정 동선 점선
             const allCoords = SPOTS.map(s => [s.lat, s.lon]);
             L.polyline(allCoords, {{
                 color: '#64748B',
@@ -125,7 +192,7 @@ def render_embedded_google_map(done_states: list[bool]) -> None:
                 opacity: 0.65
             }}).addTo(map);
 
-            // 4. 방문 완료된 구간 실시간 파란색 굵은 실선 연결
+            // 4. 완료된 이동 경로 실선
             const visitedCoords = SPOTS.filter(s => s.done).map(s => [s.lat, s.lon]);
             if (visitedCoords.length >= 2) {{
                 L.polyline(visitedCoords, {{
@@ -135,7 +202,7 @@ def render_embedded_google_map(done_states: list[bool]) -> None:
                 }}).addTo(map);
             }}
 
-            // 5. 마커 핀 및 상세 팝업창
+            // 5. 여행지 마커 등록
             const bounds = [];
             SPOTS.forEach((spot, i) => {{
                 bounds.push([spot.lat, spot.lon]);
@@ -150,63 +217,4 @@ def render_embedded_google_map(done_states: list[bool]) -> None:
                 }});
 
                 const statusText = spot.done 
-                    ? "<span style='color:#16A34A;font-weight:bold;'>🎉 방문 완료</span>" 
-                    : "<span style='color:#2563EB;font-weight:bold;'>⏳ 예정지</span>";
-
-                const popupContent = `
-                    <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif; min-width:170px;">
-                        <b style="font-size:14px;color:#1E3A8A;">${{spot.name}}</b><br>
-                        ${{statusText}}
-                        <p style="margin:4px 0;font-size:12px;color:#334155;">${{spot.desc}}</p>
-                        <div style="background:#FEF3C7;color:#B45309;padding:3px 6px;border-radius:4px;font-size:11px;">
-                            💡 ${{spot.tip}}
-                        </div>
-                    </div>
-                `;
-
-                L.marker([spot.lat, spot.lon], {{ icon: icon }})
-                    .bindPopup(popupContent)
-                    .addTo(map);
-            }});
-
-            map.fitBounds(bounds, {{ padding: [30, 30] }});
-        </script>
-    </body>
-    </html>
-    """
-    components.html(html_code, height=490)
-
-# ---------- Streamlit 화면 구성 ----------
-st.title("🚗 춘천 실시간 여행 트래커")
-st.caption("📱 일정 체크 시 앱 화면 안의 구글 지도에 완료 이동 경로(실선)가 실시간으로 연결됩니다.")
-
-col_map, col_ctrl = st.columns([1.3, 1.0])
-
-done_flags = [st.session_state[k] for k in KEYS]
-n_done = sum(done_flags)
-
-# 컨트롤 영역
-with col_ctrl:
-    st.subheader("🚩 방문 일정 체크")
-    b1, b2 = st.columns(2)
-    b1.button("🔄 전체 초기화", on_click=set_all, args=(False,), use_container_width=True)
-    b2.button("✅ 모두 완료", on_click=set_all, args=(True,), use_container_width=True)
-
-    for spot, key in zip(SPOTS, KEYS):
-        checked = st.session_state[key]
-        badge = ('<span class="badge done">✓ 방문 완료</span>' if checked
-                 else '<span class="badge yet">대기 중</span>')
-        with st.container(border=True):
-            st.markdown(
-                f'{badge}<small style="color:#64748B">Day {spot["day"]}</small>'
-                f'<div class="cat">{spot["category"]}</div>',
-                unsafe_allow_html=True,
-            )
-            st.checkbox(spot["name"], key=key)
-            st.caption(f"💡 {spot['tip']}")
-
-# 지도 영역
-with col_map:
-    st.progress(n_done / len(SPOTS),
-                text=f"진행률: {n_done} / {len(SPOTS)} 코스 완료 ({n_done * 100 // len(SPOTS)}%)")
-    render_embedded_google_map(done_flags)
+                    ? "<span style
