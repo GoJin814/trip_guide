@@ -5,6 +5,7 @@ from datetime import date, datetime
 from pathlib import Path
 from uuid import uuid4
 from zoneinfo import ZoneInfo
+from map_comp import MAP_COMPONENT
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -16,9 +17,6 @@ st.set_page_config(page_title="여행 기록", page_icon="📖", layout="wide", 
 # ======================================================================
 KST = ZoneInfo("Asia/Seoul")
 ROOT = Path(__file__).resolve().parent.parent
-MAP_COMPONENT = components.declare_component(
-    "trip_map_records", path=str(ROOT / "map_component")
-)
 RECORD_PATH = "trips/records"
 SHARED_PATH = "trips/shared"
 PLACES_URL = "https://places.googleapis.com/v1/places:searchText"
