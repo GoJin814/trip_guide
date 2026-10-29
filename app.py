@@ -206,10 +206,11 @@ def load_from_upload() -> None:
         st.session_state.msg = "⚠️ 불러올 파일을 먼저 선택해 주세요."
         return
     try:
-        apply_payload(json.load(f))
+        apply_payload(json.loads(f.getvalue().decode("utf-8")))
         st.session_state.msg = "⬆️ 파일에서 일정을 불러왔어요."
     except Exception:
         st.session_state.msg = "⚠️ 올바른 일정 파일이 아니에요."
+    st.session_state.reload_now = True  # 대화상자를 닫고 화면을 새로 그림
 
 
 # ---- 콜백 ----
@@ -515,8 +516,9 @@ def save_dialog() -> None:
                        file_name=save_filename(), mime="application/json", use_container_width=True)
     st.divider()
     st.file_uploader("⬆️ 백업 파일 선택", type="json", key="upload_file")
-    if st.button("파일에서 불러오기", use_container_width=True):
-        load_from_upload()
+    # 콜백으로 실행해야 위젯(제목 입력칸 등)을 그리기 전에 값을 바꿀 수 있음
+    st.button("파일에서 불러오기", use_container_width=True, on_click=load_from_upload)
+    if st.session_state.pop("reload_now", False):
         st.rerun()
 
 
