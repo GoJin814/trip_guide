@@ -287,6 +287,15 @@ def delete_spot(sid: str) -> None:
         del ss[k]
 
 
+def reset_to_default() -> None:
+    ss = st.session_state
+    apply_payload(default_payload())
+    if push_remote(build_payload()):
+        ss.synced_json = canon(build_payload())
+    ss.msg = "🔄 기본 데이터로 초기화했어요."
+    ss.reload_now = True
+
+
 def sync_title() -> None:
     st.session_state.trip_title = st.session_state.get("title_input", DEFAULT_TITLE)
 
@@ -413,41 +422,34 @@ def canon(payload: dict) -> str:
 # ======================================================================
 # 세션 초기화
 # ======================================================================
-@st.cache_resource
-def boot_info() -> dict:
-    """서버(앱)가 (재)시작될 때 한 번만 만들어지는 정보"""
-    return {"seeded": False, "date": datetime.now(KST).date()}
-
-
 def default_payload() -> dict:
     return {
         "version": 1,
         "page_title": DEFAULT_TITLE,
-        "start_date": boot_info()["date"].isoformat(),
+        "start_date": datetime.now(KST).date().isoformat(),
         "saved_at": "",
         "spots": [{**s, "done": False} for s in DEFAULT_SPOTS],
     }
 
 
 def init_state() -> None:
+    """처음 접속(재시작 후 포함): 공유 저장소의 마지막 데이터를 불러옴.
+    저장된 데이터가 전혀 없을 때만 기본 데이터를 사용."""
     ss = st.session_state
-    boot = boot_info()
     ss.synced_json = None
-    if not boot["seeded"]:
-        # 앱 재시작 후 첫 접속: 기본 데이터를 공유 저장소에 올리고 사용
-        apply_payload(default_payload())
-        boot["seeded"] = push_remote(build_payload())
-        if boot["seeded"]:
-            ss.synced_json = canon(build_payload())
-        return
     ok, remote = fetch_remote()
     if ok and remote is not None:
-        apply_payload(remote)              # 새로고침: 마지막으로 입력한 내용 불러오기
-        ss.synced_json = canon(build_payload())
-    elif ok:                               # 공유 저장소가 비어 있음
+        try:
+            apply_payload(remote)
+            ss.synced_json = canon(build_payload())
+            return
+        except Exception:
+            pass
+    if ok:                                  # 공유 저장소가 비어 있음 → 기본 데이터를 저장하고 사용
         apply_payload(default_payload())
-        ss.synced_json = canon(build_payload()) if push_remote(build_payload()) else None
-    else:                                  # 연결 실패: 임시 표시 후 sync_poll이 재시도
+        if push_remote(build_payload()):
+            ss.synced_json = canon(build_payload())
+    else:                                   # 연결 실패: 임시 표시 후 sync_poll이 재시도
         apply_payload(default_payload())
 
 
@@ -598,6 +600,10 @@ def save_dialog() -> None:
     st.file_uploader("⬆️ 백업 파일 선택", type="json", key="upload_file")
     # 콜백으로 실행해야 위젯(제목 입력칸 등)을 그리기 전에 값을 바꿀 수 있음
     st.button("파일에서 불러오기", use_container_width=True, on_click=load_from_upload)
+    st.divider()
+    st.checkbox("기본 데이터로 초기화 (입력한 일정이 모두 사라져요)", key="reset_ok")
+    st.button("기본값으로 초기화", type="primary", use_container_width=True,
+              disabled=not st.session_state.get("reset_ok", False), on_click=reset_to_default)
     if st.session_state.pop("reload_now", False):
         st.rerun()
 
@@ -668,7 +674,7 @@ sync_poll()
 # 화면
 # ======================================================================
 _title = st.session_state.get("trip_title", DEFAULT_TITLE).strip() or DEFAULT_TITLE
-st.markdown(f"<div style='font-size: 1.6rem; font-weight: 800; padding-bottom: 0.3rem;'> {_title}</div>",
+st.markdown(f"<div style='font-size: 1.6rem; font-weight: 800; padding-bottom: 0.3rem;'>🚞 {_title}</div>",
             unsafe_allow_html=True)
 
 if st.session_state.get("msg"):
