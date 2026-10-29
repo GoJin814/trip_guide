@@ -396,7 +396,7 @@ CSS = """
     div[data-testid="stVerticalBlockBorderWrapper"] {
         padding: 0.3rem 0.75rem 0.3rem 0.75rem !important; margin-bottom: 0.4rem !important; border-radius: 10px !important;
     }
-    [class*="st-key-card_"] [data-testid="stVerticalBlock"] {gap: 0.3rem !important;}
+    [class*="st-key-card_"] [data-testid="stVerticalBlock"] {gap: 0.5rem !important;}
     [class*="st-key-card_"] [data-testid="stCaptionContainer"] {
         font-size: 0.78rem !important; color: #4B5563 !important; line-height: 1.3 !important; padding-left: 2px;
     }
