@@ -384,20 +384,29 @@ n_done = sum(done_flags)
 
 with col_ctrl:
     def on_checkbox_change(sid: str):
-        st.rerun()
+        key = f"chk_{sid}"
+        bak_key = f"chk_bak_{sid}"
+
+    # 체크박스 변경 상태를 별도 키에 보존
+        st.session_state[bak_key] = bool(
+            st.session_state.get(key, False)
+        )
 
     def render_card(spot, idx):
         sid = spot["id"]
         key = f"chk_{sid}"
         bak_key = f"chk_bak_{sid}"
-        
-        if key in st.session_state:
-            st.session_state[bak_key] = st.session_state[key]
-        else:
-            st.session_state.setdefault(key, st.session_state.get(bak_key, False))
-            
-        checked = st.session_state.get(key, False)
-        is_editing = st.session_state.editing_flags.get(sid, False)
+
+        # 백업 상태를 기준으로 체크박스 상태 복원
+        if key not in st.session_state:
+            st.session_state[key] = bool(
+                st.session_state.get(bak_key, False)
+            )
+
+        checked = bool(st.session_state[key])
+        is_editing = st.session_state.editing_flags.get(
+            sid, False
+        )
 
         with st.container(border=True, key=f"card_d{spot['day']}_{sid}"):
             if is_editing:
@@ -416,11 +425,18 @@ with col_ctrl:
                     else:
                         st.session_state.spots_data[idx]["name"] = edit_name
                         st.session_state.spots_data[idx]["time"] = edit_time
-                        st.session_state.spots_data[idx]["day"] = edit_day
+                        st.session_state.spots_data[idx]["day"] = int(edit_day)
                         st.session_state.spots_data[idx]["tip"] = edit_tip
+
+                        # 체크박스 상태는 변경하지 않음
                         st.session_state.editing_flags[sid] = False
                         st.rerun()
-                if b_cancel.button("취소", key=f"cancel_{sid}", use_container_width=True):
+                if b_cancel.button(
+                    "취소",
+                    key=f"cancel_{sid}",
+                    use_container_width=True,
+                ):
+                    # 체크 상태는 백업 값을 유지
                     st.session_state.editing_flags[sid] = False
                     st.rerun()
             else:
@@ -432,7 +448,16 @@ with col_ctrl:
                         st.checkbox(spot["name"], value=checked, key=key, on_change=on_checkbox_change, args=(sid,), label_visibility="collapsed")
                     with c_name: st.markdown(f'<a class="spot-name" href="{naver_url}" target="_blank" rel="noopener">{html.escape(spot["name"])}</a>', unsafe_allow_html=True)
                     with c_edit:
-                        if st.button("✏️", key=f"btn_edit_{sid}", help="일정 수정"):
+                        if st.button(
+                            "✏️",
+                            key=f"btn_edit_{sid}",
+                            help="일정 수정",
+                        ):
+                            # 편집 화면 진입 직전 체크 상태 보존
+                            st.session_state[bak_key] = bool(
+                                st.session_state.get(key, False)
+                            )
+
                             st.session_state.editing_flags[sid] = True
                             st.rerun()
                     with c_del:
