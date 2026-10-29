@@ -477,8 +477,8 @@ if isinstance(_pick, dict):
 def add_spot_dialog() -> None:
     ss = st.session_state
     st.caption("💡 지도를 누르면 그 위치 좌표가 자동 입력돼요.")
-    with st.expander("🔎 구글 지도에서 장소 찾기", expanded=not ss.get("place_results")):
-        st.text_input("검색어", placeholder="예: 통나무집 본점", key="place_query")
+    with st.expander("🔎 구글 지도에서 장소 찾기", expanded=True):
+        st.text_input("검색어", placeholder="예: 인천 센트럴파크", key="place_query")
         st.button("검색", on_click=run_place_search, use_container_width=True)
         if ss.get("place_msg"):
             st.caption(ss.place_msg)
@@ -493,14 +493,14 @@ def add_spot_dialog() -> None:
             st.button("이 장소로 채우기", on_click=use_place, use_container_width=True)
 
     st.markdown("##### 📍 장소 정보")
-    new_name = st.text_input("장소명", key="new_name", placeholder="예: 구봉산 카페거리")
+    new_name = st.text_input("장소명", key="new_name", placeholder="예: 인천국제공항")
     new_day = st.number_input("일차 (Day)", min_value=1, max_value=99, value=2, step=1, key="new_day")
     new_start = st.selectbox("시작 시간", time_options(with_all_day=True),
                              index=pick_index(time_options(with_all_day=True), "09:00"), key="new_start")
     new_end = st.selectbox("완료 시간", time_options(), index=pick_index(time_options(), "10:00"),
                            key="new_end", disabled=new_start == "종일")
     new_time = make_time(new_start, new_end)
-    new_tip = st.text_area("메모/팁 (Enter로 줄바꿈)", placeholder="예: 소양강 조망 카페", height=90, key="new_tip")
+    new_tip = st.text_area("메모/팁 (Enter로 줄바꿈)", placeholder="예: 여행 출발", height=90, key="new_tip")
     new_lat = st.number_input("위도(Lat)", value=float(ss.pick_lat), format="%.4f", key=f"new_lat_{ss.pick_key}")
     new_lon = st.number_input("경도(Lon)", value=float(ss.pick_lon), format="%.4f", key=f"new_lon_{ss.pick_key}")
 
@@ -512,7 +512,7 @@ def add_spot_dialog() -> None:
         else:
             new_id = f"custom_{uuid4().hex[:6]}"
             ss.spots_data.append(dict(
-                id=new_id, day=new_day, name=f"{len(ss.spots_data) + 1}. {new_name}", time=new_time,
+                id=new_id, day=new_day, name=new_name, time=new_time,
                 lat=new_lat, lon=new_lon, desc=ss.get("new_addr") or "사용자 등록 장소", tip=new_tip))
             ss.done[new_id] = False
             ss.editing_flags[new_id] = False
@@ -588,7 +588,7 @@ sync_poll()
 # 화면
 # ======================================================================
 _title = st.session_state.get("trip_title", DEFAULT_TITLE).strip() or DEFAULT_TITLE
-st.markdown(f"<div style='font-size: 1.6rem; font-weight: 800; padding-bottom: 0.3rem;'> {_title}</div>",
+st.markdown(f"<div style='font-size: 1.6rem; font-weight: 800; padding-bottom: 0.3rem;'>🚞 {_title}</div>",
             unsafe_allow_html=True)
 
 if st.session_state.get("msg"):
