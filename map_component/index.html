@@ -6,22 +6,35 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
-  html, body { margin: 0; padding: 0; height: 100%; background: transparent; overflow: hidden; }
-  #map { width: 100%; height: 100%; border-radius: 12px; }
+  html, body { margin: 0; padding: 0; height: 100%; background: transparent; overflow: hidden; overscroll-behavior: auto; }
+  #map { width: 100%; height: 100%; border-radius: 12px; position: relative; }
   /* 세로 스와이프(페이지 스크롤·당겨서 새로고침)는 브라우저에 넘기고, 가로 드래그만 지도가 처리 */
-  .leaflet-container, .leaflet-container.leaflet-touch-drag { touch-action: pan-y !important; }
+  .leaflet-container, .leaflet-container.leaflet-touch-drag, .leaflet-container.leaflet-touch-drag.leaflet-touch-zoom {
+    touch-action: pan-y !important; }
   .custom-pin { border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center;
     justify-content: center; color: white; font-weight: bold; font-size: 11px; border: 2px solid white;
     box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
   .pin-done { background-color: #16A34A; }
   .pin-yet { background-color: #2563EB; }
+  .user-dot { width: 16px; height: 16px; border-radius: 50%; background: #2563EB; border: 3px solid #fff;
+    box-shadow: 0 0 0 2px rgba(37,99,235,0.35); }
+  .ctl-box a { width: auto !important; min-width: 30px; padding: 0 7px; font-size: 12px; font-weight: 700;
+    line-height: 30px; color: #1E3A8A; text-decoration: none; white-space: nowrap; }
+  #status { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); z-index: 1000;
+    background: rgba(15,23,42,0.85); color: #fff; font-size: 12px; padding: 5px 10px; border-radius: 8px;
+    display: none; pointer-events: none; white-space: nowrap; }
 </style>
 </head>
 <body>
-<div id="map"></div>
+<div id="map"><div id="status"></div></div>
 <script>
 (function () {
-  let map = null, layer = null, fitted = false;
+  let map = null, layer = null, userLayer = null, Ctl = null;
+  let lastSpots = [];
+  let autoFit = true;         // true면 "전체 일정 보기" 상태를 유지 (리사이즈 시 다시 맞춤)
+  let initialFitDone = false; // 페이지 로드 직후 한 번은 전체 보기
+  let busy = false;           // 프로그램이 직접 움직인 것인지 구분
+  let lastFocus = null;
 
   function send(type, data) {
     window.parent.postMessage(Object.assign({ isStreamlitMessage: true, type: type }, data || {}), "*");
@@ -30,31 +43,105 @@
     return String(t == null ? "" : t).replace(/[&<>"']/g,
       c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
   }
+  function setStatus(msg) {
+    const el = document.getElementById('status');
+    el.textContent = msg;
+    el.style.display = 'block';
+    clearTimeout(setStatus.t);
+    setStatus.t = setTimeout(() => { el.style.display = 'none'; }, 2600);
+  }
   function setHeight() {
     const w = document.getElementById('map').clientWidth;
     if (w > 0) send('streamlit:setFrameHeight', { height: Math.round(w) }); // 정사각형
     if (map) map.invalidateSize();
   }
+
+  // 모든 일정이 보이도록 맞춤
+  function fitAll(animate) {
+    const pts = lastSpots.map(s => [s.lat, s.lon]);
+    if (!pts.length || !map) return;
+    busy = true;
+    map.fitBounds(pts, { padding: [30, 30], maxZoom: 16, animate: !!animate });
+    busy = false;
+    autoFit = true;
+  }
+  // 특정 일정 위치를 중앙에
+  function focusOn(lat, lon) {
+    busy = true;
+    map.flyTo([lat, lon], Math.max(map.getZoom(), 15), { duration: 0.6 });
+    busy = false;
+    autoFit = false;
+  }
+  // 현재 내 위치로 이동
+  function locate(btn) {
+    if (!navigator.geolocation) { setStatus('이 브라우저는 위치 기능을 지원하지 않아요'); return; }
+    btn.textContent = '…';
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      btn.textContent = '내 위치';
+      const ll = [pos.coords.latitude, pos.coords.longitude];
+      userLayer.clearLayers();
+      L.circle(ll, { radius: pos.coords.accuracy, color: '#2563EB', weight: 1,
+        fillColor: '#2563EB', fillOpacity: 0.12 }).addTo(userLayer);
+      L.marker(ll, { interactive: false, icon: L.divIcon({ className: '',
+        html: '<div class="user-dot"></div>', iconSize: [16, 16], iconAnchor: [8, 8] }) }).addTo(userLayer);
+      busy = true;
+      map.flyTo(ll, Math.max(map.getZoom(), 16), { duration: 0.6 });
+      busy = false;
+      autoFit = false;
+    }, function (err) {
+      btn.textContent = '내 위치';
+      setStatus(err && err.code === 1 ? '위치 권한이 거부됐어요' : '현재 위치를 찾지 못했어요');
+    }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 });
+  }
+
   function ensureMap() {
     if (map) return;
     map = L.map('map', { zoomControl: true, attributionControl: false }).setView([37.915, 127.755], 11);
     L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { maxZoom: 19 }).addTo(map);
     layer = L.layerGroup().addTo(map);
+    userLayer = L.layerGroup().addTo(map);
+
+    // 우상단 컨트롤: 전체 보기 / 내 위치
+    Ctl = L.Control.extend({
+      options: { position: 'topright' },
+      onAdd: function () {
+        const box = L.DomUtil.create('div', 'leaflet-bar ctl-box');
+        const fit = L.DomUtil.create('a', '', box);
+        fit.href = '#'; fit.title = '전체 일정 보기'; fit.textContent = '전체 보기';
+        const loc = L.DomUtil.create('a', '', box);
+        loc.href = '#'; loc.title = '현재 내 위치로 이동'; loc.textContent = '내 위치';
+        L.DomEvent.disableClickPropagation(box);
+        L.DomEvent.on(fit, 'click', function (e) { L.DomEvent.preventDefault(e); fitAll(true); });
+        L.DomEvent.on(loc, 'click', function (e) { L.DomEvent.preventDefault(e); locate(loc); });
+        return box;
+      }
+    });
+    map.addControl(new Ctl());
+
+    // 사용자가 직접 움직이면 자동 전체 보기 해제 (재렌더링 때 시점이 튀지 않도록)
+    map.on('dragstart', function () { autoFit = false; });
+    map.on('zoomstart', function () { if (!busy) autoFit = false; });
     // 지도를 누르면 그 위치를 Streamlit으로 전달 (일정 추가 폼에 입력됨)
     map.on('click', function (e) {
+      autoFit = false;
       send('streamlit:setComponentValue', {
         value: { lat: e.latlng.lat, lon: e.latlng.lng, nonce: Date.now() },
         dataType: 'json'
       });
     });
   }
-  function render(spots) {
+
+  function render(args) {
     ensureMap();
+    const spots = args.spots || [];
+    lastSpots = spots;
     layer.clearLayers();
+
     const all = spots.map(s => [s.lat, s.lon]);
     if (all.length) L.polyline(all, { color: '#64748B', weight: 3, dashArray: '6, 8', opacity: 0.65 }).addTo(layer);
     const visited = spots.filter(s => s.done).map(s => [s.lat, s.lon]);
     if (visited.length >= 2) L.polyline(visited, { color: '#2563EB', weight: 6, opacity: 0.95 }).addTo(layer);
+
     spots.forEach(function (spot, i) {
       const icon = L.divIcon({
         className: '',
@@ -71,16 +158,30 @@
         esc(spot.tip) + '</div></div>';
       L.marker([spot.lat, spot.lon], { icon: icon, bubblingMouseEvents: false }).bindPopup(popup).addTo(layer);
     });
-    if (!fitted && all.length) { map.fitBounds(all, { padding: [30, 30] }); fitted = true; }
+
+    // 카드에서 📍을 누른 경우: 해당 위치로 이동 (nonce가 새로울 때만 → 재렌더링마다 튀지 않음)
+    const f = args.focus;
+    if (f && f.nonce && f.nonce !== lastFocus) {
+      lastFocus = f.nonce;
+      initialFitDone = true;
+      focusOn(f.lat, f.lon);
+    } else if (!initialFitDone && all.length) {
+      // 페이지를 새로고침하면 처음에는 모든 일정이 보이는 상태
+      initialFitDone = true;
+      fitAll(false);
+    }
   }
 
   window.addEventListener('message', function (ev) {
     const d = ev.data;
     if (!d || d.type !== 'streamlit:render') return;
-    render((d.args && d.args.spots) || []);
+    render(d.args || {});
     setHeight();
   });
-  window.addEventListener('resize', setHeight);
+  window.addEventListener('resize', function () {
+    setHeight();
+    if (map && autoFit) fitAll(false); // 높이가 바뀌어도 전체 보기 상태 유지
+  });
   send('streamlit:componentReady', { apiVersion: 1 });
 })();
 </script>
