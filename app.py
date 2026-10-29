@@ -163,7 +163,7 @@ st.set_page_config(
 # ======================================================================
 CSS = """
 <style>
-    .block-container {padding: 1rem 0.6rem 2rem 0.6rem !important;}
+    .block-container {padding: 4rem 0.6rem 2rem 0.6rem !important;}
     .stCheckbox label {font-size: 0.92rem !important; font-weight: 700 !important; cursor: pointer; color: #111827;}
     .stCheckbox {margin-bottom: 0 !important;}
 
