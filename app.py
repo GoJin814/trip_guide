@@ -84,6 +84,7 @@ def apply_payload(data: dict) -> None:
     for k in [k for k in ss.keys() if str(k).startswith(("inp_name_", "inp_time_", "inp_day_", "inp_tip_"))]:
         del ss[k]
     ss.trip_title = str(data.get("page_title") or DEFAULT_TITLE)
+    ss["title_input"] = ss.trip_title
 
 
 def read_saved_file():
@@ -97,6 +98,11 @@ def read_saved_file():
 def reset_checks() -> None:
     for s in st.session_state.spots_data:
         st.session_state[f"chk_{s['id']}"] = False
+
+
+def sync_title() -> None:
+    # 입력창(title_input) 값을 실제 제목(trip_title)으로 옮김
+    st.session_state.trip_title = st.session_state.get("title_input", DEFAULT_TITLE)
 
 
 def save_to_server() -> None:
@@ -144,7 +150,7 @@ if "spots_data" not in st.session_state:
             pass
 
 st.set_page_config(
-    page_title=st.session_state.trip_title.strip() or DEFAULT_TITLE,
+    page_title=st.session_state.get("trip_title", DEFAULT_TITLE).strip() or DEFAULT_TITLE,
     page_icon="🗺️",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -430,7 +436,7 @@ def render_embedded_google_map(spots, done_states: list[bool]) -> None:
     components.html(final_html, height=470)
 
 # ---------- 화면 레이아웃 ----------
-st.title(f"🚗 {st.session_state.trip_title.strip() or DEFAULT_TITLE}")
+st.title(f"🚗 {st.session_state.get('trip_title', DEFAULT_TITLE).strip() or DEFAULT_TITLE}")
 
 if st.session_state.get("msg"):
     st.toast(st.session_state.pop("msg"))
@@ -473,7 +479,8 @@ with col_ctrl:
         with top_c3:
             with st.popover("💾 저장", use_container_width=True):
                 st.markdown("##### 💾 여행 저장 / 불러오기")
-                st.text_input("여행 제목", key="trip_title")
+                st.text_input("여행 제목", value=st.session_state.get("trip_title", DEFAULT_TITLE),
+                              key="title_input", on_change=sync_title)
                 st.button("💾 지금 상태 저장", on_click=save_to_server, use_container_width=True)
                 st.button("📂 저장된 일정 불러오기", on_click=load_from_server, use_container_width=True)
                 _saved = read_saved_file()
