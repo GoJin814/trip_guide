@@ -142,11 +142,19 @@ CSS = """
     .stCheckbox label {font-size: 0.92rem !important; font-weight: 700 !important; cursor: pointer; color: #111827;}
     .stCheckbox {margin-bottom: 0 !important;}
 
-    /* ---- 일정 카드: 위/아래 여백 균형 ---- */
+    /* ---- 일정 카드: 위/아래 여백 균형 & 카드 간격 ---- */
     div[data-testid="stVerticalBlockBorderWrapper"] {
-        padding: 0.3rem 0.75rem 1.55rem 0.75rem !important;
-        margin-bottom: 0.35rem !important;
+        padding: 0.35rem 0.5rem 0.35rem 0.5rem !important; /* [위 우 아래 좌] 원하는 여백 */
+        margin-bottom: 0.2rem !important;                  /* 카드 아래쪽 간격 */
         border-radius: 10px !important;
+    }
+    /* 카드 컨테이너 자체의 바깥 간격 강제 적용 */
+    [class*="st-key-card_d"] {
+        margin-bottom: 0.3rem !important;                  /* 카드 간 간격(상하) */
+    }
+    /* 카드 내부 요소들 사이의 간격 */
+    [class*="st-key-card_d"] [data-testid="stVerticalBlock"] {
+        gap: 0.15rem !important;                           /* 내부 줄 간격 */
     }
     [class*="st-key-card_"] [data-testid="stVerticalBlock"] {gap: 0.3rem !important;}
     [class*="st-key-card_"] [data-testid="stCaptionContainer"] {
@@ -236,13 +244,18 @@ def make_time(start, end):
 
 
 def day_color_css() -> str:
-    rules = []
-    for d in sorted({int(s["day"]) for s in st.session_state.spots_data}):
-        bg, bd = DAY_PALETTE[(max(d, 1) - 1) % len(DAY_PALETTE)]
-        sel = f'[class*="st-key-card_d{d}_"]'
-        rules.append(f'{sel}, {sel} [data-testid="stVerticalBlockBorderWrapper"] '
-                     f'{{background:{bg} !important; border-color:{bd} !important;}}')
-    return "<style>" + "\n".join(rules) + "</style>"
+  rules = []
+  for d in sorted({int(s["day"]) for s in st.session_state.spots_data}):
+    bg, bd = DAY_PALETTE[(max(d, 1) - 1) % len(DAY_PALETTE)]
+    sel = f'[class*="st-key-card_d{d}_"]'
+    # padding과 margin을 함께 명시
+    rules.append(
+        f'{sel} [data-testid="stVerticalBlockBorderWrapper"] '
+        f"{{background:{bg} !important; border-color:{bd} !important; "
+        f"padding: 0.35rem 0.5rem !important; margin-bottom: 0.25rem"
+        " !important;}"
+    )
+  return "<style>" + "\n".join(rules) + "</style>"
 
 
 st.markdown(CSS + day_color_css(), unsafe_allow_html=True)
