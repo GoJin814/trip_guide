@@ -388,6 +388,14 @@ with col_ctrl:
     def render_card(spot, idx):
         sid = spot["id"]
         key = f"chk_{sid}"
+        bak_key = f"chk_bak_{sid}"
+
+        # 체크박스가 살아있을 때의 상태를 백업 변수에 항시 동기화
+        if key in st.session_state:
+            st.session_state[bak_key] = st.session_state[key]
+        else:
+            st.session_state.setdefault(key, st.session_state.get(bak_key, False))
+
         checked = st.session_state.get(key, False)
         is_editing = st.session_state.editing_flags.get(sid, False)
 
@@ -421,7 +429,10 @@ with col_ctrl:
                 with st.container(key=f"hdr_{sid}"):
                     c_chk, c_name, c_edit, c_del = st.columns([1, 7, 1, 1])
                     # on_change를 달아 체크하는 즉시 화면이 리런되며 배지와 상태가 100% 동기화되도록 수정
-                    with c_chk: st.checkbox(spot["name"], key=key, on_change=on_checkbox_change, args=(sid,), label_visibility="collapsed")
+                        with c_chk: 
+                            # value=checked를 주어 수정 폼을 열고 닫아도 기존 체크 상태가 유지되도록 강제
+                            st.checkbox(spot["name"], value=checked, key=key, on_change=on_checkbox_change, args=(sid,), label_visibility="collapsed")
+
                     with c_name: st.markdown(f'<a class="spot-name" href="{naver_url}" target="_blank" rel="noopener">{html.escape(spot["name"])}</a>', unsafe_allow_html=True)
                     with c_edit:
                         if st.button("✏️", key=f"btn_edit_{sid}", help="일정 수정"):
