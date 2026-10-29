@@ -163,12 +163,18 @@ CSS = """
     [class*="st-key-card_"] [data-testid="column"] {min-width: 0 !important;}
 
     /* 헤더 줄: [체크박스 고정] [장소명(링크) 가변] [✏️][🗑️] 고정폭 */
+    [class*="st-key-hdr_"] [data-testid="stHorizontalBlock"] {gap: 0.1rem !important;}
     [class*="st-key-hdr_"] [data-testid="stColumn"]:nth-child(1),
-    [class*="st-key-hdr_"] [data-testid="column"]:nth-child(1) {flex: 0 0 1.6rem !important; width: 1.6rem !important;}
+    [class*="st-key-hdr_"] [data-testid="column"]:nth-child(1) {flex: 0 0 1.8rem !important; width: 1.8rem !important;}
     [class*="st-key-hdr_"] [data-testid="stColumn"]:nth-child(2),
     [class*="st-key-hdr_"] [data-testid="column"]:nth-child(2) {flex: 1 1 0 !important; width: auto !important;}
     [class*="st-key-hdr_"] [data-testid="stColumn"]:nth-child(n+3),
-    [class*="st-key-hdr_"] [data-testid="column"]:nth-child(n+3) {flex: 0 0 2.2rem !important; width: 2.2rem !important;}
+    [class*="st-key-hdr_"] [data-testid="column"]:nth-child(n+3) {flex: 0 0 1.2rem !important; width: 1.2rem !important;}
+
+    /* 삭제 팝오버 버튼: 화살표 아이콘 제거, 이모지 가운데 정렬 */
+    [class*="st-key-btn_del_"] button svg,
+    [class*="st-key-btn_del_"] button [data-testid="stIconMaterial"] {display: none !important;}
+    [class*="st-key-btn_del_"] button {justify-content: center !important;}
 
     /* 장소명 링크 (네이버 검색) */
     a.spot-name {color: #1E3A8A; font-weight: 700; font-size: 0.92rem; text-decoration: underline;
@@ -191,7 +197,8 @@ CSS = """
     .trip-title {font-size: 1.3rem; font-weight: 800; line-height: 1.3; margin: 0 0 0.5rem 0; color: #111827;}
 
     /* 지도: 정사각형 비율 */
-    .st-key-mapbox iframe {width: 100% !important; height: auto !important; aspect-ratio: 1 / 1;}
+    .st-key-mapbox {margin-bottom: 0.6rem !important;}
+    .st-key-mapbox iframe {width: 100% !important; aspect-ratio: 1 / 1;}
 </style>
 """
 TIME_SLOTS = [f"{h:02d}:{m:02d}" for h in range(5, 24) for m in (0, 30)]
@@ -399,6 +406,23 @@ MAP_TEMPLATE = """
             map.fitBounds(bounds, { padding: [30, 30] });
         }
 
+        // iframe 높이를 가로 폭과 같게 맞춰 지도를 정사각형으로 유지
+        function fitFrame() {
+            try {
+                const fe = window.frameElement;
+                if (!fe) return;
+                const w = fe.getBoundingClientRect().width;
+                if (w > 0) {
+                    fe.style.height = Math.round(w) + 'px';
+                    map.invalidateSize();
+                    if (bounds.length > 0) map.fitBounds(bounds, { padding: [30, 30] });
+                }
+            } catch (e) {}
+        }
+        window.addEventListener('resize', fitFrame);
+        fitFrame();
+        setTimeout(fitFrame, 300);
+
         let userMarker = null;
         let userCircle = null;
 
@@ -470,8 +494,10 @@ def render_embedded_google_map(spots, done_states: list[bool]) -> None:
 
 
 # ---------- 화면 레이아웃 ----------
+_title = html.escape(st.session_state.get("trip_title", DEFAULT_TITLE).strip() or DEFAULT_TITLE)
 st.markdown(
-    f'<div class="trip-title">{html.escape(st.session_state.get("trip_title", DEFAULT_TITLE).strip() or DEFAULT_TITLE)}</div>',
+    f'<div style="font-size:1.2rem;font-weight:800;line-height:1.3;'
+    f'margin:0.2rem 0 0.6rem 0;color:#111827;">{_title}</div>',
     unsafe_allow_html=True,
 )
 
@@ -631,6 +657,6 @@ with col_ctrl:
 # [좌측 지도 영역]
 with col_map:
     total_spots = len(spots) if len(spots) > 0 else 1
+    render_embedded_google_map(spots, done_flags)
     st.progress(n_done / total_spots,
                 text=f"진행률: {n_done} / {len(spots)} 코스 완료 ({n_done * 100 // total_spots}%)")
-    render_embedded_google_map(spots, done_flags)
