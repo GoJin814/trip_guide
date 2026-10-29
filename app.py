@@ -15,21 +15,15 @@ import streamlit.components.v1 as components
 # ======================================================================
 # 기본 데이터 / 상수
 # ======================================================================
-DEFAULT_TITLE = "춘천 실시간 여행 트래커"
+DEFAULT_TITLE = "기분 좋은 여행의 시작"
 KST = ZoneInfo("Asia/Seoul")
 WEEKDAYS = "월화수목금토일"
 
 DEFAULT_SPOTS = [
-    dict(id="legoland", day=1, name="1. 레고랜드 코리아", time="종일",
-         lat=37.8845, lon=127.6975, desc="하중도 위치 테마파크 탐방", tip="오전 인기 어트랙션 집중 공략"),
-    dict(id="soyang_dam", day=2, name="2. 소양호 유람선터미널", time="09:30~10:00",
-         lat=37.9547, lon=127.8184, desc="청평사행 도선 승선 (편도 15분)", tip="댐 정상 주차장 09:30 전 도착 권장"),
-    dict(id="cheongpyeongsa", day=2, name="3. 청평사 경내", time="10:15~11:45",
-         lat=37.9877, lon=127.8136, desc="구성폭포 및 오봉산 산책로 관람", tip="선착장 ↔ 절 왕복 약 1시간 도보"),
-    dict(id="sambath", day=2, name="4. 샘밭막국수", time="12:30~13:30",
-         lat=37.9317, lon=127.7656, desc="담백한 전통 메밀막국수 & 편육", tip="소양강댐에서 차로 5분 거리 위치"),
-    dict(id="cablecar", day=2, name="5. 삼악산 호수케이블카", time="14:00~15:30",
-         lat=37.8548, lon=127.6970, desc="국내 최장 3.61km 케이블카 & 의암호 전망", tip="의암호 정차장에서 서울/수도권 복귀 직결"),
+    dict(id="home", day=1, name="집", time="종일",
+         lat=37.3840, lon=126.6470, desc="송도 더샵 그린애비뉴 7단지", tip="여행 시작"),
+    dict(id="airport", day=1, name="인천국제공항", time="종일",
+         lat=37.4490, lon=126.4510, desc="제1여객터미널", tip="떠날 준비 완료?"),
 ]
 
 # 지도 컴포넌트 (map_component/index.html)
@@ -358,21 +352,46 @@ def canon(payload: dict) -> str:
 # ======================================================================
 # 세션 초기화
 # ======================================================================
+@st.cache_resource
+def boot_info() -> dict:
+    """서버(앱)가 (재)시작될 때 한 번만 만들어지는 정보"""
+    return {"seeded": False, "date": datetime.now(KST).date()}
+
+
+def default_payload() -> dict:
+    return {
+        "version": 1,
+        "page_title": DEFAULT_TITLE,
+        "start_date": boot_info()["date"].isoformat(),
+        "saved_at": "",
+        "spots": [{**s, "done": False} for s in DEFAULT_SPOTS],
+    }
+
+
+def init_state() -> None:
+    ss = st.session_state
+    boot = boot_info()
+    ss.synced_json = None
+    if not boot["seeded"]:
+        # 앱 재시작 후 첫 접속: 기본 데이터를 공유 저장소에 올리고 사용
+        apply_payload(default_payload())
+        boot["seeded"] = push_remote(build_payload())
+        if boot["seeded"]:
+            ss.synced_json = canon(build_payload())
+        return
+    ok, remote = fetch_remote()
+    if ok and remote is not None:
+        apply_payload(remote)              # 새로고침: 마지막으로 입력한 내용 불러오기
+        ss.synced_json = canon(build_payload())
+    elif ok:                               # 공유 저장소가 비어 있음
+        apply_payload(default_payload())
+        ss.synced_json = canon(build_payload()) if push_remote(build_payload()) else None
+    else:                                  # 연결 실패: 임시 표시 후 sync_poll이 재시도
+        apply_payload(default_payload())
+
+
 if "spots_data" not in st.session_state:
-    st.session_state.spots_data = copy.deepcopy(DEFAULT_SPOTS)
-    st.session_state.done = {s["id"]: False for s in DEFAULT_SPOTS}
-    st.session_state.editing_flags = {}
-    st.session_state.trip_title = DEFAULT_TITLE
-    st.session_state.trip_start_input = datetime.now(KST).date()
-    st.session_state.synced_json = None
-    _ok, _remote = fetch_remote()
-    if _ok:
-        try:
-            if _remote is not None:
-                apply_payload(_remote)
-            st.session_state.synced_json = canon(build_payload())
-        except Exception:
-            pass
+    init_state()
 
 st.session_state.setdefault("pick_lat", 37.8870)
 st.session_state.setdefault("pick_lon", 127.7650)
@@ -537,16 +556,29 @@ def sync_poll() -> None:
     ok, remote = fetch_remote()
     if not ok:
         return
-    if remote is None:
-        if st.session_state.synced_json is None:
-            st.session_state.synced_json = canon(build_payload())
+    ss = st.session_state
+    if ss.synced_json is None:  # 처음 연결이 실패했던 경우: 지금 연결되면 맞춰 줌
+        if remote is None:
+            if push_remote(build_payload()):
+                ss.synced_json = canon(build_payload())
+        else:
+            try:
+                apply_payload(remote)
+            except Exception:
+                return
+            ss.synced_json = canon(build_payload())
+            st.rerun(scope="app")
         return
-    if canon(remote) != st.session_state.synced_json:
+    if remote is None:
+        if push_remote(build_payload()):
+            ss.synced_json = canon(build_payload())
+        return
+    if canon(remote) != ss.synced_json:
         try:
             apply_payload(remote)
         except Exception:
             return
-        st.session_state.synced_json = canon(build_payload())
+        ss.synced_json = canon(build_payload())
         st.rerun(scope="app")
 
 
@@ -570,7 +602,7 @@ if st.session_state.get("day_filter") not in _day_opts:
     st.session_state.day_filter = 0
 sel_day = st.session_state.day_filter
 _max_day = max((int(s["day"]) for s in all_spots), default=1)
-_trip_len = f"({_max_day - 1}박 {_max_day}일)    "
+_trip_len = f"({_max_day - 1}박 {_max_day}일)  "
 _row_style = ("height:2.4rem;display:flex;align-items:center;font-size:0.9rem;"
               "font-weight:700;color:#374151;white-space:nowrap;")
 with st.container(key="daybar"):
@@ -581,7 +613,7 @@ with st.container(key="daybar"):
     with d_date:
         st.date_input("여행 시작일", key="trip_start_input", label_visibility="collapsed")
     with d_len:
-        st.markdown(f'<div style="{_row_style}color:#2563EB;">{_trip_len}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="{_row_style}color:#2563EB;padding-right:0.9rem;">{_trip_len}</div>', unsafe_allow_html=True)
 
 spots = [s for s in all_spots if sel_day == 0 or int(s["day"]) == sel_day]
 done_flags = [st.session_state.done.get(s["id"], False) for s in spots]
