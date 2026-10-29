@@ -9,22 +9,25 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# 모바일 반응형 스타일
+# 모바일/태블릿 최적화 컴팩트 스타일
 CSS = """
 <style>
-    .block-container {padding: 1.2rem 0.8rem 2rem 0.8rem !important;}
-    .stCheckbox label {font-size: 1.05rem !important; font-weight: 600 !important; cursor: pointer;}
-    .badge {display:inline-block; padding:.2rem .6rem; border-radius:9999px;
-            font-size:.8rem; font-weight:700; margin-right:.4rem;}
+    .block-container {padding: 1rem 0.6rem 2rem 0.6rem !important;}
+    .stCheckbox label {font-size: 0.95rem !important; font-weight: 700 !important; cursor: pointer;}
+    .badge {display:inline-block; padding: 0.15rem 0.45rem; border-radius: 9999px;
+            font-size: 0.72rem; font-weight: 700; margin-right: 0.3rem;}
     .done {background:#DCFCE7; color:#15803D;}
     .yet  {background:#F1F5F9; color:#64748B;}
-    .cat  {font-size:.85rem; color:#2563EB; font-weight:600;}
+    .cat  {font-size: 0.78rem; color:#2563EB; font-weight:600; margin: 2px 0;}
+    .tip-box {font-size: 0.75rem; color:#6B7280; line-height: 1.25; margin-top: 2px;}
+    div[data-testid="stExpander"] {border: none !important; box-shadow: none !important; margin-top: -6px;}
+    div[data-testid="stExpander"] details summary {font-size: 0.78rem !important; color: #4B5563; padding: 2px 0;}
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
 
-# 춘천 여행 목적지 데이터
-SPOTS = [
+# 기본 여행 코스 데이터 초기화
+DEFAULT_SPOTS = [
     dict(id="legoland", day=1, name="1. 레고랜드 코리아", category="테마파크 (종일)",
          lat=37.8845, lon=127.6975, desc="하중도 위치 테마파크 탐방",
          tip="오전 인기 어트랙션 집중 공략"),
@@ -42,16 +45,19 @@ SPOTS = [
          tip="의암호 정차장에서 서울/수도권 복귀 직결"),
 ]
 
-KEYS = [f"chk_{s['id']}" for s in SPOTS]
+# 세션 상태에 편집 가능한 데이터셋 저장
+if "spots_data" not in st.session_state:
+    st.session_state.spots_data = DEFAULT_SPOTS
 
-for k in KEYS:
-    st.session_state.setdefault(k, False)
+# 체크 상태 관리
+for s in st.session_state.spots_data:
+    st.session_state.setdefault(f"chk_{s['id']}", False)
 
 def set_all(value: bool) -> None:
-    for k in KEYS:
-        st.session_state[k] = value
+    for s in st.session_state.spots_data:
+        st.session_state[f"chk_{s['id']}"] = value
 
-# ---------- 지도 렌더링 템플릿 (f-string 문법 에러 원천 방지) ----------
+# 지도 템플릿
 MAP_TEMPLATE = """
 <!DOCTYPE html>
 <html>
@@ -71,66 +77,56 @@ MAP_TEMPLATE = """
         }
         .custom-pin {
             border-radius: 50%;
-            width: 26px;
-            height: 26px;
+            width: 24px;
+            height: 24px;
             display: flex;
             align-items: center;
             justify-content: center;
             color: white;
             font-weight: bold;
-            font-size: 13px;
+            font-size: 11px;
             border: 2px solid white;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
         }
         .pin-done { background-color: #16A34A; }
         .pin-yet { background-color: #2563EB; }
         
         .location-btn {
             position: absolute;
-            top: 12px;
-            right: 12px;
+            top: 10px;
+            right: 10px;
             z-index: 1000;
             background: white;
             border: none;
-            width: 44px;
-            height: 44px;
+            width: 40px;
+            height: 40px;
             border-radius: 8px;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
             outline: none;
         }
-        .location-btn:active {
-            background: #F1F5F9;
-            transform: scale(0.95);
-        }
-        .location-btn svg {
-            width: 24px;
-            height: 24px;
-            fill: #4B5563;
-        }
-        .location-btn.active svg {
-            fill: #2563EB;
-        }
+        .location-btn svg { width: 22px; height: 22px; fill: #4B5563; }
+        .location-btn.active svg { fill: #2563EB; }
 
         .user-pulse {
-            width: 18px;
-            height: 18px;
+            width: 16px;
+            height: 16px;
             background-color: #2563EB;
-            border: 3px solid white;
+            border: 2px solid white;
             border-radius: 50%;
-            box-shadow: 0 0 10px rgba(37,99,235,0.8);
+            box-shadow: 0 0 8px rgba(37,99,235,0.8);
             position: relative;
         }
         .user-pulse::after {
             content: '';
             position: absolute;
-            top: -6px;
-            left: -6px;
-            width: 24px;
-            height: 24px;
+            top: -5px;
+            left: -5px;
+            width: 22px;
+            height: 22px;
             border-radius: 50%;
             border: 2px solid #2563EB;
             animation: pulse 1.6s infinite ease-out;
@@ -159,21 +155,20 @@ MAP_TEMPLATE = """
             attributionControl: false
         }).setView([37.9150, 127.7550], 11);
 
-        // 구글 지도 타일 레이어
         L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
             maxZoom: 19
         }).addTo(map);
 
-        // 전체 예정 경로 (점선)
         const allCoords = SPOTS.map(s => [s.lat, s.lon]);
-        L.polyline(allCoords, {
-            color: '#64748B',
-            weight: 3,
-            dashArray: '6, 8',
-            opacity: 0.65
-        }).addTo(map);
+        if (allCoords.length > 0) {
+            L.polyline(allCoords, {
+                color: '#64748B',
+                weight: 3,
+                dashArray: '6, 8',
+                opacity: 0.65
+            }).addTo(map);
+        }
 
-        // 완료된 경로 (파란색 실선)
         const visitedCoords = SPOTS.filter(s => s.done).map(s => [s.lat, s.lon]);
         if (visitedCoords.length >= 2) {
             L.polyline(visitedCoords, {
@@ -183,7 +178,6 @@ MAP_TEMPLATE = """
             }).addTo(map);
         }
 
-        // 목적지 마커
         const bounds = [];
         SPOTS.forEach((spot, i) => {
             bounds.push([spot.lat, spot.lon]);
@@ -193,8 +187,8 @@ MAP_TEMPLATE = """
             const icon = L.divIcon({
                 className: '',
                 html: '<div class="' + pinClass + '">' + iconSymbol + '</div>',
-                iconSize: [26, 26],
-                iconAnchor: [13, 13]
+                iconSize: [24, 24],
+                iconAnchor: [12, 12]
             });
 
             const statusText = spot.done 
@@ -202,11 +196,11 @@ MAP_TEMPLATE = """
                 : "<span style='color:#2563EB;font-weight:bold;'>⏳ 예정지</span>";
 
             const popupContent = 
-                '<div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif; min-width:170px;">' +
-                    '<b style="font-size:14px;color:#1E3A8A;">' + spot.name + '</b><br>' +
+                '<div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif; min-width:160px;">' +
+                    '<b style="font-size:13px;color:#1E3A8A;">' + spot.name + '</b><br>' +
                     statusText +
-                    '<p style="margin:4px 0;font-size:12px;color:#334155;">' + spot.desc + '</p>' +
-                    '<div style="background:#FEF3C7;color:#B45309;padding:3px 6px;border-radius:4px;font-size:11px;">' +
+                    '<p style="margin:4px 0;font-size:11px;color:#334155;">' + spot.desc + '</p>' +
+                    '<div style="background:#FEF3C7;color:#B45309;padding:2px 5px;border-radius:4px;font-size:10px;">' +
                         '💡 ' + spot.tip +
                     '</div>' +
                 '</div>';
@@ -216,16 +210,17 @@ MAP_TEMPLATE = """
                 .addTo(map);
         });
 
-        map.fitBounds(bounds, { padding: [35, 35] });
+        if (bounds.length > 0) {
+            map.fitBounds(bounds, { padding: [30, 30] });
+        }
 
-        // 내 위치 기능
         let userMarker = null;
         let userCircle = null;
 
         function findMyLocation() {
             const btn = document.getElementById('locBtn');
             if (!navigator.geolocation) {
-                alert('이 기기/브라우저에서는 위치 서비스를 지원하지 않습니다.');
+                alert('위치 서비스를 지원하지 않는 기기입니다.');
                 return;
             }
 
@@ -243,13 +238,11 @@ MAP_TEMPLATE = """
                     const userIcon = L.divIcon({
                         className: '',
                         html: '<div class="user-pulse"></div>',
-                        iconSize: [18, 18],
-                        iconAnchor: [9, 9]
+                        iconSize: [16, 16],
+                        iconAnchor: [8, 8]
                     });
 
                     userMarker = L.marker([lat, lon], { icon: userIcon }).addTo(map);
-                    userMarker.bindPopup("<b>📍 현재 내 위치</b><br><small>정확도 약 " + Math.round(accuracy) + "m</small>").openPopup();
-
                     userCircle = L.circle([lat, lon], {
                         radius: accuracy,
                         color: '#3B82F6',
@@ -258,11 +251,11 @@ MAP_TEMPLATE = """
                         fillOpacity: 0.15
                     }).addTo(map);
 
-                    map.flyTo([lat, lon], 14, { animate: true, duration: 1.2 });
+                    map.flyTo([lat, lon], 14, { animate: true, duration: 1.0 });
                 },
                 function(err) {
                     btn.classList.remove('active');
-                    alert('위치 정보를 가져올 수 없습니다. 브라우저의 위치 권한을 확인해 주세요.');
+                    alert('위치 정보를 불러올 수 없습니다. 브라우저 위치 권한을 확인해주세요.');
                 },
                 { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
             );
@@ -272,51 +265,127 @@ MAP_TEMPLATE = """
 </html>
 """
 
-def render_embedded_google_map(done_states: list[bool]) -> None:
+def render_embedded_google_map(spots, done_states: list[bool]) -> None:
     data = [
         {
             "name": s["name"],
             "lat": s["lat"],
             "lon": s["lon"],
-            "desc": s["desc"],
-            "tip": s["tip"],
+            "desc": s.get("desc", ""),
+            "tip": s.get("tip", ""),
             "done": d
         }
-        for s, d in zip(SPOTS, done_states)
+        for s, d in zip(spots, done_states)
     ]
     spots_json = json.dumps(data, ensure_ascii=False)
     final_html = MAP_TEMPLATE.replace("__SPOTS_JSON__", spots_json)
-    components.html(final_html, height=490)
+    components.html(final_html, height=450)
 
-# ---------- 화면 표시 ----------
+# ---------- 화면 레이아웃 ----------
 st.title("🚗 춘천 실시간 여행 트래커")
-st.caption("📱 우측 상단 타겟 버튼(⌖)을 누르면 내 위치 중심으로 이동하며, 일정 체크 시 경로가 연결됩니다.")
+st.caption("📱 일정 체크 시 경로가 자동 연결되며, 우측 상단 ⌖ 버튼으로 내 위치를 조회할 수 있습니다.")
 
-col_map, col_ctrl = st.columns([1.3, 1.0])
+col_map, col_ctrl = st.columns([1.1, 1.2])
 
-done_flags = [st.session_state[k] for k in KEYS]
+spots = st.session_state.spots_data
+done_flags = [st.session_state.get(f"chk_{s['id']}", False) for s in spots]
 n_done = sum(done_flags)
 
+# [우측 컨트롤러 영역: 2열 그리드로 공간 극대화]
 with col_ctrl:
-    st.subheader("🚩 방문 일정 체크")
-    b1, b2 = st.columns(2)
-    b1.button("🔄 전체 초기화", on_click=set_all, args=(False,), use_container_width=True)
-    b2.button("✅ 모두 완료", on_click=set_all, args=(True,), use_container_width=True)
+    # 1. 상단 액션 바 (초기화 / 완료 / 새 일정 추가)
+    top_c1, top_c2, top_c3 = st.columns([1, 1, 1.2])
+    top_c1.button("🔄 초기화", on_click=set_all, args=(False,), use_container_width=True)
+    top_c2.button("✅ 전체완료", on_click=set_all, args=(True,), use_container_width=True)
+    
+    with top_c3:
+        with st.popover("➕ 새 일정 추가", use_container_width=True):
+            st.markdown("##### 📍 새 장소 등록")
+            new_name = st.text_input("장소명", placeholder="예: 구봉산 카페거리")
+            new_cat = st.text_input("시간/분류", placeholder="예: 카페/디저트 (16:00~)")
+            new_day = st.selectbox("일차", [1, 2], index=1)
+            new_tip = st.text_input("메모/팁", placeholder="예: 전망 좋은 베이커리")
+            new_lat = st.number_input("위도(Lat)", value=37.8870, format="%.4f")
+            new_lon = st.number_input("경도(Lon)", value=127.7650, format="%.4f")
+            
+            if st.button("추가하기", use_container_width=True):
+                if new_name:
+                    new_id = f"custom_{len(spots)+1}"
+                    st.session_state.spots_data.append(dict(
+                        id=new_id, day=new_day, name=f"{len(spots)+1}. {new_name}",
+                        category=new_cat, lat=new_lat, lon=new_lon,
+                        desc="사용자 등록 장소", tip=new_tip
+                    ))
+                    st.session_state[f"chk_{new_id}"] = False
+                    st.rerun()
 
-    for spot, key in zip(SPOTS, KEYS):
-        checked = st.session_state[key]
-        badge = ('<span class="badge done">✓ 방문 완료</span>' if checked
-                 else '<span class="badge yet">대기 중</span>')
-        with st.container(border=True):
-            st.markdown(
-                f'{badge}<small style="color:#64748B">Day {spot["day"]}</small>'
-                f'<div class="cat">{spot["category"]}</div>',
-                unsafe_allow_html=True,
-            )
-            st.checkbox(spot["name"], key=key)
-            st.caption(f"💡 {spot['tip']}")
+    st.write("")
 
+    # 2. 2열 그리드(좌우 교차 배치)로 카드 렌더링
+    for i in range(0, len(spots), 2):
+        row_c1, row_c2 = st.columns(2)
+        
+        # 첫 번째 열
+        with row_c1:
+            idx = i
+            spot = spots[idx]
+            key = f"chk_{spot['id']}"
+            checked = st.session_state.get(key, False)
+            badge = ('<span class="badge done">✓ 완료</span>' if checked
+                     else '<span class="badge yet">대기</span>')
+            
+            with st.container(border=True):
+                st.markdown(
+                    f'{badge}<small style="color:#64748B">Day {spot["day"]}</small>'
+                    f'<div class="cat">{spot["category"]}</div>',
+                    unsafe_allow_html=True,
+                )
+                st.checkbox(spot["name"], key=key)
+                st.markdown(f'<div class="tip-box">💡 {spot["tip"]}</div>', unsafe_allow_html=True)
+                
+                # 인라인 실시간 수정 아코디언
+                with st.expander("✏️ 내용 수정"):
+                    edit_name = st.text_input("장소명", value=spot["name"], key=f"e_name_{spot['id']}")
+                    edit_cat = st.text_input("시간/분류", value=spot["category"], key=f"e_cat_{spot['id']}")
+                    edit_tip = st.text_input("팁/메모", value=spot["tip"], key=f"e_tip_{spot['id']}")
+                    if st.button("저장", key=f"btn_save_{spot['id']}", use_container_width=True):
+                        st.session_state.spots_data[idx]["name"] = edit_name
+                        st.session_state.spots_data[idx]["category"] = edit_cat
+                        st.session_state.spots_data[idx]["tip"] = edit_tip
+                        st.rerun()
+
+        # 두 번째 열 (존재하는 경우)
+        if i + 1 < len(spots):
+            with row_c2:
+                idx = i + 1
+                spot = spots[idx]
+                key = f"chk_{spot['id']}"
+                checked = st.session_state.get(key, False)
+                badge = ('<span class="badge done">✓ 완료</span>' if checked
+                         else '<span class="badge yet">대기</span>')
+                
+                with st.container(border=True):
+                    st.markdown(
+                        f'{badge}<small style="color:#64748B">Day {spot["day"]}</small>'
+                        f'<div class="cat">{spot["category"]}</div>',
+                        unsafe_allow_html=True,
+                    )
+                    st.checkbox(spot["name"], key=key)
+                    st.markdown(f'<div class="tip-box">💡 {spot["tip"]}</div>', unsafe_allow_html=True)
+                    
+                    with st.expander("✏️ 내용 수정"):
+                        edit_name = st.text_input("장소명", value=spot["name"], key=f"e_name_{spot['id']}")
+                        edit_cat = st.text_input("시간/분류", value=spot["category"], key=f"e_cat_{spot['id']}")
+                        edit_tip = st.text_input("팁/메모", value=spot["tip"], key=f"e_tip_{spot['id']}")
+                        if st.button("저장", key=f"btn_save_{spot['id']}", use_container_width=True):
+                            st.session_state.spots_data[idx]["name"] = edit_name
+                            st.session_state.spots_data[idx]["category"] = edit_cat
+                            st.session_state.spots_data[idx]["tip"] = edit_tip
+                            st.rerun()
+
+# [좌측 지도 영역]
 with col_map:
-    st.progress(n_done / len(SPOTS),
-                text=f"진행률: {n_done} / {len(SPOTS)} 코스 완료 ({n_done * 100 // len(SPOTS)}%)")
-    render_embedded_google_map(done_flags)
+    total_spots = len(spots) if len(spots) > 0 else 1
+    st.progress(n_done / total_spots,
+                text=f"진행률: {n_done} / {len(spots)} 코스 완료 ({n_done * 100 // total_spots}%)")
+    render_embedded_google_map(spots, done_flags)
