@@ -371,8 +371,7 @@ def sync_poll() -> None:
 sync_poll()
 
 _title = st.session_state.get("trip_title", DEFAULT_TITLE).strip() or DEFAULT_TITLE
-st.markdown(f"<div style='font-size: 1.6rem; font-weight: 800; padding-bottom: 0.3rem;'>🚗 {_title}</div>", unsafe_allow_html=True)
-st.caption("📱 우측 상단 타겟 버튼(⌖)을 누르면 내 위치 중심으로 이동하며, 일정 체크 시 경로가 연결됩니다.")
+st.markdown(f"<div style='font-size: 1.6rem; font-weight: 800; padding-bottom: 0.3rem;'>🚞 {_title}</div>", unsafe_allow_html=True)
 
 if st.session_state.get("msg"):
     st.toast(st.session_state.pop("msg"))
@@ -484,7 +483,7 @@ with col_ctrl:
 
         with top_c2:
             with st.popover("💾 저장/불러오기", use_container_width=True):
-                st.markdown("##### 💾 여행 저장 / 불러오기")
+                st.markdown("##### 💾 저장/불러오기")
                 st.text_input("여행 제목", value=st.session_state.get("trip_title", DEFAULT_TITLE), key="title_input", on_change=sync_title)
                 st.text_input("저장 파일 이름", value="chuncheon_trip", key="save_name")
                 st.caption("이 기기의 다운로드 폴더에 저장돼요. 서버에는 저장되지 않아요.")
