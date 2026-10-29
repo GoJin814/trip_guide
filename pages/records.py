@@ -83,7 +83,8 @@ CSS = """
         flex: 1 1 0 !important; width: auto !important;}
     [class*="st-key-ptrow_"] [data-testid="stColumn"]:nth-child(n+2), [class*="st-key-ptrow_"] [data-testid="column"]:nth-child(n+2) {
         flex: 0 0 2.3rem !important; width: 2.3rem !important;}
-    [class*="st-key-ptrow_"] button {min-height: 2.2rem !important; height: 2.2rem !important; width: 100% !important; padding: 0 !important;}
+    [class*="st-key-ptrow_"] button {min-height: 2.2rem !important; height: 2.2rem !important; width: 100% !important;
+        padding: 0 !important; border: none !important; background: transparent !important; box-shadow: none !important;}
     [class*="st-key-ptrow_"] [data-testid="stMarkdownContainer"] p {margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;}
     *, *::before, *::after {overscroll-behavior-y: auto !important;}
     .st-key-mapbox {margin-bottom: 0 !important;}
