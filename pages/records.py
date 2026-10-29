@@ -5,7 +5,6 @@ from datetime import date, datetime
 from pathlib import Path
 from uuid import uuid4
 from zoneinfo import ZoneInfo
-from map_comp import MAP_COMPONENT
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -17,6 +16,7 @@ st.set_page_config(page_title="여행 기록", page_icon="📖", layout="wide", 
 # ======================================================================
 KST = ZoneInfo("Asia/Seoul")
 ROOT = Path(__file__).resolve().parent.parent
+from map_comp import MAP_COMPONENT  # 지도 컴포넌트 (루트 map_comp.py)
 RECORD_PATH = "trips/records"
 SHARED_PATH = "trips/shared"
 PLACES_URL = "https://places.googleapis.com/v1/places:searchText"
@@ -387,9 +387,21 @@ if st.session_state.get("msg"):
 # ======================================================================
 # 화면
 # ======================================================================
+def tab_nav(current: str) -> None:
+    """페이지 제목 위 탭 메뉴. 현재 탭은 굵게 표시."""
+    cols = st.columns([1.4, 1.4, 4])
+    for col, (name, target) in zip(cols, [("여행 정보", "app.py"), ("여행 기록", "pages/records.py")]):
+        with col:
+            if name == current:
+                st.markdown(f"<div style='font-weight:800;font-size:1.05rem;color:#111827;padding-top:0.3rem;'>{name}</div>",
+                            unsafe_allow_html=True)
+            else:
+                st.page_link(target, label=name)
+
+
+tab_nav("여행 기록")
 st.markdown("<div style='font-size:1.6rem;font-weight:800;padding-bottom:0.3rem;'>🌿 행복 충전 기록</div>",
             unsafe_allow_html=True)
-st.page_link("app.py", label="🗺️ 여행 정보 페이지로")
 
 order = st.session_state.get("rec_order", ORDER_OPTIONS[0])
 recs = sort_records(st.session_state.records, order)
