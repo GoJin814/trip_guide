@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif; }
+  #list { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 2px; }
+  .row { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #CBD5E1;
+    border-radius: 10px; padding: 8px 10px; user-select: none; -webkit-user-select: none; }
+  .row.dragging { box-shadow: 0 6px 16px rgba(0,0,0,0.22); position: relative; z-index: 5; }
+  .handle { touch-action: none; cursor: grab; font-size: 20px; color: #64748B; padding: 2px 6px; line-height: 1; }
+  .info { flex: 1; min-width: 0; }
+  .name { font-weight: 700; font-size: 14px; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .meta { font-size: 12px; color: #4B5563; margin-top: 2px; }
+  .day { font-size: 11px; font-weight: 700; color: #1E3A8A; background: #E0E7FF; border-radius: 6px; padding: 2px 6px; white-space: nowrap; }
+</style>
+</head>
+<body>
+<div id="list"></div>
+<script>
+(function () {
+  const list = document.getElementById('list');
+  let dragEl = null, startY = 0, lastOrder = [];
+
+  function send(type, data) {
+    window.parent.postMessage(Object.assign({ isStreamlitMessage: true, type: type }, data || {}), '*');
+  }
+  function esc(t) {
+    return String(t == null ? '' : t).replace(/[&<>"']/g,
+      c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+  }
+  function setHeight() {
+    send('streamlit:setFrameHeight', { height: Math.ceil(list.getBoundingClientRect().height) + 8 });
+  }
+
+  function render(items) {
+    list.innerHTML = '';
+    items.forEach(function (it) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.dataset.id = it.id;
+      row.innerHTML = '<span class="handle" title="끌어서 순서 변경">⠿</span>' +
+        '<div class="info"><div class="name">' + esc(it.name) + '</div>' +
+        '<div class="meta">' + esc(it.time || '') + '</div></div>' +
+        '<span class="day">Day ' + esc(it.day) + '</span>';
+      row.querySelector('.handle').addEventListener('pointerdown', onDown);
+      list.appendChild(row);
+    });
+    lastOrder = items.map(it => it.id);
+    setHeight();
+  }
+
+  function onDown(e) {
+    e.preventDefault();
+    const handle = e.currentTarget;
+    dragEl = handle.closest('.row');
+    startY = e.clientY;
+    dragEl.classList.add('dragging');
+    handle.setPointerCapture(e.pointerId);
+    handle.addEventListener('pointermove', onMove);
+    handle.addEventListener('pointerup', onUp);
+    handle.addEventListener('pointercancel', onUp);
+  }
+
+  function onMove(e) {
+    if (!dragEl) return;
+    const dy = e.clientY - startY;
+    const visualCenter = dragEl.offsetTop + dy + dragEl.offsetHeight / 2;
+    const next = dragEl.nextElementSibling;
+    const prev = dragEl.previousElementSibling;
+    // 자리를 바꿀 때 화면에서 끌고 있는 카드가 튀지 않도록 기준점(startY)을 같이 보정
+    if (next && visualCenter > next.offsetTop + next.offsetHeight / 2) {
+      const old = dragEl.offsetTop;
+      list.insertBefore(next, dragEl);
+      startY += dragEl.offsetTop - old;
+    } else if (prev && visualCenter < prev.offsetTop + prev.offsetHeight / 2) {
+      const old = dragEl.offsetTop;
+      list.insertBefore(dragEl, prev);
+      startY += dragEl.offsetTop - old;
+    }
+    dragEl.style.transform = 'translateY(' + (e.clientY - startY) + 'px)';
+  }
+
+  function onUp(e) {
+    if (!dragEl) return;
+    const el = dragEl;
+    dragEl = null;
+    el.classList.remove('dragging');
+    el.style.transform = '';
+    const handle = e.currentTarget;
+    handle.removeEventListener('pointermove', onMove);
+    handle.removeEventListener('pointerup', onUp);
+    handle.removeEventListener('pointercancel', onUp);
+    const order = Array.from(list.children).map(r => r.dataset.id);
+    if (order.join('|') === lastOrder.join('|')) return;
+    send('streamlit:setComponentValue', {
+      value: { order: order, moved: el.dataset.id, nonce: Date.now() },
+      dataType: 'json'
+    });
+  }
+
+  window.addEventListener('message', function (ev) {
+    const d = ev.data;
+    if (!d || d.type !== 'streamlit:render') return;
+    if (dragEl) return; // 끄는 중에는 다시 그리지 않음
+    render((d.args && d.args.items) || []);
+  });
+  send('streamlit:componentReady', { apiVersion: 1 });
+})();
+</script>
+</body>
+</html>
