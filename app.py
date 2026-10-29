@@ -148,8 +148,12 @@ def load_from_upload() -> None:
 
 
 # ---- 콜백 ----
-def set_done(sid: str) -> None:
-    st.session_state.done[sid] = bool(st.session_state.get(f"chk_{sid}", False))
+def set_done(sid: str, key: str) -> None:
+    st.session_state.done[sid] = bool(st.session_state.get(key, False))
+
+
+def set_focus(lat: float, lon: float) -> None:
+    st.session_state.focus = {"lat": lat, "lon": lon, "nonce": uuid4().hex}
 
 
 def delete_spot(sid: str) -> None:
@@ -157,7 +161,7 @@ def delete_spot(sid: str) -> None:
     ss.spots_data = [s for s in ss.spots_data if s["id"] != sid]
     ss.done.pop(sid, None)
     ss.editing_flags.pop(sid, None)
-    for k in [k for k in ss.keys() if str(k) == f"chk_{sid}" or
+    for k in [k for k in ss.keys() if str(k).startswith(f"chk_{sid}_") or
               (str(k).startswith("inp_") and str(k).endswith(f"_{sid}"))]:
         del ss[k]
 
@@ -248,7 +252,10 @@ st.set_page_config(
 CSS = """
 <style>
     .block-container {padding: 4rem 0.6rem 2rem 0.6rem !important;}
-    html, body, .stApp, [data-testid="stAppViewContainer"] {overscroll-behavior-y: auto !important;}
+    /* 당겨서 새로고침 방해 요소 제거: 모든 스크롤 영역의 overscroll을 기본값(auto)으로 */
+    *, *::before, *::after {overscroll-behavior-y: auto !important;}
+    /* 지도 iframe: 세로 스와이프는 브라우저(페이지 스크롤/당겨서 새로고침)에 넘김 */
+    .st-key-mapbox iframe {touch-action: pan-y !important;}
     .stCheckbox label {font-size: 0.92rem !important; font-weight: 700 !important; cursor: pointer; color: #111827;}
     .stCheckbox {margin-bottom: 0 !important;}
 
@@ -268,12 +275,12 @@ CSS = """
     [class*="st-key-hdr_"] [data-testid="stColumn"]:nth-child(1), [class*="st-key-hdr_"] [data-testid="column"]:nth-child(1) {flex: 0 0 1.8rem !important; width: 1.8rem !important;}
     [class*="st-key-hdr_"] [data-testid="stColumn"]:nth-child(2), [class*="st-key-hdr_"] [data-testid="column"]:nth-child(2) {flex: 1 1 0 !important; width: auto !important;}
     [class*="st-key-hdr_"] [data-testid="stColumn"]:nth-child(n+3), [class*="st-key-hdr_"] [data-testid="column"]:nth-child(n+3) {flex: 0 0 1.2rem !important; width: 1.2rem !important;}
-    [class*="st-key-hdr_"] [data-testid="stColumn"]:nth-child(4), [class*="st-key-hdr_"] [data-testid="column"]:nth-child(4) {margin-left: 0.65rem !important;}
+    [class*="st-key-hdr_"] [data-testid="stColumn"]:nth-child(3), [class*="st-key-hdr_"] [data-testid="column"]:nth-child(3) {margin-left: 0.4rem !important;}
 
     [class*="st-key-btn_del_"] button svg, [class*="st-key-btn_del_"] button [data-testid="stIconMaterial"] {display: none !important;}
     [class*="st-key-btn_del_"] button {justify-content: center !important;}
     a.spot-name {color: #1E3A8A; font-weight: 700; font-size: 0.92rem; text-decoration: underline; text-underline-offset: 2px; line-height: 1.5; display: inline-block; margin-top: 0.35rem;}
-    [class*="st-key-btn_edit_"] button, [class*="st-key-btn_del_"] button {min-height: 1.9rem !important; height: 1.9rem !important; width: 100% !important; padding: 0 !important; border: none !important; background: transparent !important;}
+    [class*="st-key-btn_edit_"] button, [class*="st-key-btn_del_"] button, [class*="st-key-btn_focus_"] button {min-height: 1.9rem !important; height: 1.9rem !important; width: 100% !important; padding: 0 !important; border: none !important; background: transparent !important;}
 
     .st-key-topbar [data-testid="stHorizontalBlock"] {flex-direction: row !important; flex-wrap: nowrap !important; gap: 0.4rem !important;}
     .st-key-topbar [data-testid="stColumn"], .st-key-topbar [data-testid="column"] {min-width: 0 !important;}
@@ -341,8 +348,9 @@ n_done = sum(done_flags)
 with col_ctrl:
     def render_card(spot, idx):
         sid = spot["id"]
-        key = f"chk_{sid}"
         checked = st.session_state.done.get(sid, False)
+        # 완료 여부가 바뀌면 키도 바뀌어 체크박스가 새 값으로 다시 그려짐 (다른 기기 변경도 반영)
+        key = f"chk_{sid}_{int(checked)}"
         is_editing = st.session_state.editing_flags.get(sid, False)
 
         with st.container(border=True, key=f"card_d{spot['day']}_{sid}"):
@@ -379,13 +387,16 @@ with col_ctrl:
                 q = quote(re.sub(r"^\d+\.\s*", "", spot["name"]))
                 naver_url = f"https://search.naver.com/search.naver?query={q}"
                 with st.container(key=f"hdr_{sid}"):
-                    c_chk, c_name, c_edit, c_del = st.columns([1, 7, 1, 1])
+                    c_chk, c_name, c_focus, c_edit, c_del = st.columns([1, 6, 1, 1, 1])
                     with c_chk:
-                        st.checkbox(spot["name"], value=checked, key=key, on_change=set_done, args=(sid,),
+                        st.checkbox(spot["name"], value=checked, key=key, on_change=set_done, args=(sid, key),
                                     label_visibility="collapsed")
                     with c_name:
                         st.markdown(f'<a class="spot-name" href="{naver_url}" target="_blank" rel="noopener">'
                                     f'{html.escape(spot["name"])}</a>', unsafe_allow_html=True)
+                    with c_focus:
+                        st.button("📍", key=f"btn_focus_{sid}", help="지도에서 이 장소 보기",
+                                  on_click=set_focus, args=(spot["lat"], spot["lon"]))
                     with c_edit:
                         if st.button("✏️", key=f"btn_edit_{sid}", help="일정 수정"):
                             st.session_state.editing_flags[sid] = True
@@ -479,7 +490,7 @@ with col_map:
         for s, d in zip(spots, done_flags)
     ]
     with st.container(key="mapbox"):
-        MAP_COMPONENT(spots=map_data, key="map_pick", default=None)
+        MAP_COMPONENT(spots=map_data, focus=st.session_state.get("focus"), key="map_pick", default=None)
 
     with st.container(key="progress_wrap"):
         st.progress(n_done / total_spots,
