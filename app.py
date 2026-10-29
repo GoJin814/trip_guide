@@ -196,7 +196,7 @@ CSS = """
 
     .st-key-mapbox {margin-bottom: 0 !important;}
     .st-key-progress_wrap {
-        margin-top: -0.5rem !important; 
+        margin-top: -2.0rem !important; 
     }
     .st-key-mapbox iframe {width: 100% !important; aspect-ratio: 1 / 1;}
 </style>
