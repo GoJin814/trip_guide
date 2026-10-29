@@ -79,8 +79,12 @@ def apply_payload(data: dict) -> None:
 
     ss.spots_data = spots
     ss.editing_flags = {s["id"]: False for s in spots}
+    
+    # 동기화 시 백업 키도 함께 업데이트하여 데이터 증발 방지
     for sid, d in dones.items():
         ss[f"chk_{sid}"] = d
+        ss[f"backup_chk_{sid}"] = d
+        
     # 이전 수정 폼 입력값 초기화
     for k in [k for k in ss.keys() if str(k).startswith(
             ("inp_name_", "inp_time_", "inp_start_", "inp_end_", "inp_day_", "inp_tip_"))]:
@@ -101,7 +105,7 @@ def delete_spot(sid: str) -> None:
     ss.spots_data = [s for s in ss.spots_data if s["id"] != sid]
     ss.editing_flags.pop(sid, None)
     stale = [k for k in ss.keys()
-             if k == f"chk_{sid}" or (str(k).startswith("inp_") and str(k).endswith(f"_{sid}"))]
+             if k == f"chk_{sid}" or k == f"backup_chk_{sid}" or (str(k).startswith("inp_") and str(k).endswith(f"_{sid}"))]
     for k in stale:
         del ss[k]
 
@@ -224,24 +228,4 @@ CSS = """
         gap: 0.4rem !important; align-items: flex-start !important;
     }
     [class*="st-key-card_"] [data-testid="stColumn"],
-    [class*="st-key-card_"] [data-testid="column"] {min-width: 0 !important;}
-
-    /* 헤더 줄: [체크박스 고정] [장소명(링크) 가변] [✏️][🗑️] 고정폭 */
-    [class*="st-key-hdr_"] [data-testid="stHorizontalBlock"] {gap: 0.1rem !important;}
-    [class*="st-key-hdr_"] [data-testid="stColumn"]:nth-child(1),
-    [class*="st-key-hdr_"] [data-testid="column"]:nth-child(1) {flex: 0 0 1.8rem !important; width: 1.8rem !important;}
-    [class*="st-key-hdr_"] [data-testid="stColumn"]:nth-child(2),
-    [class*="st-key-hdr_"] [data-testid="column"]:nth-child(2) {flex: 1 1 0 !important; width: auto !important;}
-    [class*="st-key-hdr_"] [data-testid="stColumn"]:nth-child(n+3),
-    [class*="st-key-hdr_"] [data-testid="column"]:nth-child(n+3) {flex: 0 0 1.2rem !important; width: 1.2rem !important;}
-    /* 수정(✏️)과 삭제(🗑️) 사이 간격 */
-    [class*="st-key-hdr_"] [data-testid="stColumn"]:nth-child(4),
-    [class*="st-key-hdr_"] [data-testid="column"]:nth-child(4) {margin-left: 0.65rem !important;}
-
-    /* 삭제 팝오버 버튼: 화살표 아이콘 제거, 이모지 가운데 정렬 */
-    [class*="st-key-btn_del_"] button svg,
-    [class*="st-key-btn_del_"] button [data-testid="stIconMaterial"] {display: none !important;}
-    [class*="st-key-btn_del_"] button {justify-content: center !important;}
-
-    /* 장소명 링크 (네이버 검색) */
-    a.spot-name {color: #1E3A8A; font-weight: 700; font-size: 0.9
+    
