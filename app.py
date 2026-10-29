@@ -66,6 +66,7 @@ def apply_payload(data: dict) -> None:
     
     for sid, d in dones.items():
         ss[f"chk_{sid}"] = d
+        ss[f"chk_bak_{sid}"] = d
         
     for k in [k for k in ss.keys() if str(k).startswith(("inp_name_", "inp_time_", "inp_start_", "inp_end_", "inp_day_", "inp_tip_"))]:
         del ss[k]
@@ -81,7 +82,7 @@ def delete_spot(sid: str) -> None:
     ss = st.session_state
     ss.spots_data = [s for s in ss.spots_data if s["id"] != sid]
     ss.editing_flags.pop(sid, None)
-    stale = [k for k in ss.keys() if k == f"chk_{sid}" or (str(k).startswith("inp_") and str(k).endswith(f"_{sid}"))]
+    stale = [k for k in ss.keys() if k in (f"chk_{sid}", f"chk_bak_{sid}") or (str(k).startswith("inp_") and str(k).endswith(f"_{sid}"))]
     for k in stale: del ss[k]
 
 def sync_title() -> None:
@@ -231,6 +232,7 @@ st.markdown(CSS + day_color_css(), unsafe_allow_html=True)
 for s in st.session_state.spots_data:
     sid = s["id"]
     st.session_state.setdefault(f"chk_{sid}", False)
+    st.session_state.setdefault(f"chk_bak_{sid}", False)
     st.session_state.editing_flags.setdefault(sid, False)
 
 
@@ -369,7 +371,8 @@ def sync_poll() -> None:
 sync_poll()
 
 _title = st.session_state.get("trip_title", DEFAULT_TITLE).strip() or DEFAULT_TITLE
-st.markdown(f"<div style='font-size: 1.6rem; font-weight: 800; padding-bottom: 0.3rem;'>🚞 {_title}</div>", unsafe_allow_html=True)
+st.markdown(f"<div style='font-size: 1.6rem; font-weight: 800; padding-bottom: 0.3rem;'>🚗 {_title}</div>", unsafe_allow_html=True)
+st.caption("📱 우측 상단 타겟 버튼(⌖)을 누르면 내 위치 중심으로 이동하며, 일정 체크 시 경로가 연결됩니다.")
 
 if st.session_state.get("msg"):
     st.toast(st.session_state.pop("msg"))
@@ -382,20 +385,18 @@ n_done = sum(done_flags)
 
 with col_ctrl:
     def on_checkbox_change(sid: str):
-        """체크박스가 변경되는 즉시 화면을 리런하여 배지와 지도 선을 실시간 반영"""
         st.rerun()
 
     def render_card(spot, idx):
         sid = spot["id"]
         key = f"chk_{sid}"
         bak_key = f"chk_bak_{sid}"
-
-        # 체크박스가 살아있을 때의 상태를 백업 변수에 항시 동기화
+        
         if key in st.session_state:
             st.session_state[bak_key] = st.session_state[key]
         else:
             st.session_state.setdefault(key, st.session_state.get(bak_key, False))
-
+            
         checked = st.session_state.get(key, False)
         is_editing = st.session_state.editing_flags.get(sid, False)
 
@@ -428,11 +429,8 @@ with col_ctrl:
                 naver_url = f"https://search.naver.com/search.naver?query={q}"
                 with st.container(key=f"hdr_{sid}"):
                     c_chk, c_name, c_edit, c_del = st.columns([1, 7, 1, 1])
-                    # on_change를 달아 체크하는 즉시 화면이 리런되며 배지와 상태가 100% 동기화되도록 수정
-                        with c_chk: 
-                            # value=checked를 주어 수정 폼을 열고 닫아도 기존 체크 상태가 유지되도록 강제
-                            st.checkbox(spot["name"], value=checked, key=key, on_change=on_checkbox_change, args=(sid,), label_visibility="collapsed")
-
+                    with c_chk: 
+                        st.checkbox(spot["name"], value=checked, key=key, on_change=on_checkbox_change, args=(sid,), label_visibility="collapsed")
                     with c_name: st.markdown(f'<a class="spot-name" href="{naver_url}" target="_blank" rel="noopener">{html.escape(spot["name"])}</a>', unsafe_allow_html=True)
                     with c_edit:
                         if st.button("✏️", key=f"btn_edit_{sid}", help="일정 수정"):
@@ -480,6 +478,7 @@ with col_ctrl:
                         new_id = f"custom_{uuid4().hex[:6]}"
                         st.session_state.spots_data.append(dict(id=new_id, day=new_day, name=f"{len(spots)+1}. {new_name}", time=new_time, lat=new_lat, lon=new_lon, desc="사용자 등록 장소", tip=new_tip))
                         st.session_state[f"chk_{new_id}"] = False
+                        st.session_state[f"chk_bak_{new_id}"] = False
                         st.session_state.editing_flags[new_id] = False
                         st.rerun()
 
