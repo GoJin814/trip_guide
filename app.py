@@ -74,7 +74,13 @@ PTR_JS = """
     doc.addEventListener('touchend', end, {passive: true});
     top.addEventListener('message', function (e) {
       var d = e.data;
-      if (!d || d.type !== 'trip-touch') return;
+      if (!d) return;
+      if (d.type === 'trip-scroll-map') {
+        var mb = doc.querySelector('.st-key-mapbox');
+        if (mb) { mb.style.scrollMarginTop = '4.5rem'; mb.scrollIntoView({behavior: 'smooth', block: 'start'}); }
+        return;
+      }
+      if (d.type !== 'trip-touch') return;
       if (d.phase === 'start') start(d.y);
       else if (d.phase === 'move') move(d.y);
       else end();
@@ -618,6 +624,8 @@ if _pending == "add":
     add_spot_dialog()
 elif _pending == "save":
     save_dialog()
+elif _pending == "reorder":
+    reorder_dialog()
 
 # ======================================================================
 # 카드 간 공유 동기화
@@ -774,8 +782,6 @@ with col_ctrl:
                                 f'{tip_items}</div>', unsafe_allow_html=True)
                 st.markdown('<div style="height:1rem;"></div>', unsafe_allow_html=True)
 
-    if st.button("🔀 순서 변경", key="open_reorder", use_container_width=True):
-        reorder_dialog()
     if not spots:
         st.info("이 날짜에는 아직 일정이 없어요. ‘➕ 일정 추가’로 넣어 보세요.")
     for i in range(0, len(spots), 2):
