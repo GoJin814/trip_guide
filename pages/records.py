@@ -72,7 +72,7 @@ PTR_JS = """
 
 CSS = """
 <style>
-    .block-container {padding: 1.8rem 0.6rem 2rem 0.6rem !important;}
+    .block-container {padding: 3.8rem 0.6rem 2rem 0.6rem !important;}
     [data-testid="stExpandSidebarButton"], [data-testid="stSidebarCollapseButton"],
     [data-testid="stSidebarCollapsedControl"], [data-testid="collapsedControl"],
     [data-testid="stSidebar"] {display: none !important;}
@@ -107,6 +107,13 @@ CSS = """
     .rc-meta {font-size: 0.8rem; color: #374151; margin-top: 2px;}
     .rc-memo {font-size: 0.78rem; color: #4B5563; line-height: 1.4; margin-top: 4px;}
     .rc-memo div {padding-left: 0.9em; text-indent: -0.9em;}
+    [class*="st-key-rc_"] {position: relative;}
+    [class*="st-key-fit_"] button {position: static !important; justify-content: flex-start !important; text-align: left !important;}
+    [class*="st-key-fit_"] button p {font-weight: 800; font-size: 1rem; color: #111827; text-align: left;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;}
+    [class*="st-key-fit_"] button::after {content: ""; position: absolute; inset: 0; z-index: 1;}
+    [class*="st-key-rc_"] [data-testid="stColumn"]:nth-child(n+2), [class*="st-key-rc_"] [data-testid="column"]:nth-child(n+2) {
+        position: relative; z-index: 2;}
 </style>
 """
 
@@ -190,6 +197,40 @@ def fmt_date(d) -> str:
     return f"{d.year}.{d.month:02d}.{d.day:02d}" if d else ""
 
 
+COUNTRY_CODES = {
+    "대한민국": "KR", "한국": "KR", "일본": "JP", "중국": "CN", "대만": "TW", "홍콩": "HK", "마카오": "MO",
+    "몽골": "MN", "태국": "TH", "베트남": "VN", "필리핀": "PH", "싱가포르": "SG", "말레이시아": "MY",
+    "인도네시아": "ID", "캄보디아": "KH", "라오스": "LA", "미얀마": "MM", "브루나이": "BN", "동티모르": "TL",
+    "인도": "IN", "네팔": "NP", "부탄": "BT", "스리랑카": "LK", "몰디브": "MV", "방글라데시": "BD",
+    "파키스탄": "PK", "우즈베키스탄": "UZ", "카자흐스탄": "KZ", "조지아": "GE", "아르메니아": "AM",
+    "미국": "US", "하와이": "US", "괌": "GU", "사이판": "MP", "캐나다": "CA", "멕시코": "MX", "쿠바": "CU",
+    "코스타리카": "CR", "브라질": "BR", "아르헨티나": "AR", "칠레": "CL", "페루": "PE", "콜롬비아": "CO",
+    "에콰도르": "EC", "볼리비아": "BO", "우루과이": "UY",
+    "영국": "GB", "아일랜드": "IE", "프랑스": "FR", "독일": "DE", "이탈리아": "IT", "스페인": "ES",
+    "포르투갈": "PT", "네덜란드": "NL", "벨기에": "BE", "룩셈부르크": "LU", "스위스": "CH", "오스트리아": "AT",
+    "체코": "CZ", "슬로바키아": "SK", "헝가리": "HU", "폴란드": "PL", "그리스": "GR", "크로아티아": "HR",
+    "슬로베니아": "SI", "세르비아": "RS", "몬테네그로": "ME", "루마니아": "RO", "불가리아": "BG",
+    "몰타": "MT", "키프로스": "CY", "모나코": "MC", "바티칸": "VA", "핀란드": "FI", "스웨덴": "SE",
+    "노르웨이": "NO", "덴마크": "DK", "아이슬란드": "IS", "에스토니아": "EE", "라트비아": "LV",
+    "리투아니아": "LT", "우크라이나": "UA", "러시아": "RU", "튀르키예": "TR", "터키": "TR",
+    "호주": "AU", "오스트레일리아": "AU", "뉴질랜드": "NZ", "피지": "FJ",
+    "이집트": "EG", "모로코": "MA", "남아프리카공화국": "ZA", "케냐": "KE", "탄자니아": "TZ",
+    "아랍에미리트": "AE", "uae": "AE", "이스라엘": "IL", "요르단": "JO", "카타르": "QA", "오만": "OM",
+    "사우디아라비아": "SA", "바레인": "BH", "쿠웨이트": "KW",
+}
+
+
+def flag_of(country: str) -> str:
+    """나라 이름 → 국기 이모지 (모르는 나라는 🌏). 두 글자 영문 국가 코드(예: JP)도 지원."""
+    name = str(country or "").strip().replace(" ", "")
+    code = COUNTRY_CODES.get(name) or COUNTRY_CODES.get(name.lower())
+    if not code and len(name) == 2 and name.isascii() and name.isalpha():
+        code = name.upper()
+    if not code:
+        return "🌏"
+    return "".join(chr(0x1F1E6 + ord(c) - 65) for c in code)
+
+
 def sort_records(recs: list, order: str) -> list:
     key = lambda r: (parse_date(r.get("start")) or date.min, str(r.get("id")))
     return sorted(recs, key=key, reverse=(order == "최신 순"))
@@ -252,6 +293,15 @@ def run_search(rid: str) -> None:
 # ======================================================================
 def set_focus(lat, lon) -> None:
     st.session_state.focus = {"lat": lat, "lon": lon, "nonce": uuid4().hex}
+
+
+def fit_record(rid: str) -> None:
+    """기록 카드를 누르면 그 기록의 모든 장소가 한눈에 보이도록 지도 이동"""
+    ss = st.session_state
+    rec = next((r for r in ss.records if r["id"] == rid), None)
+    pts = [[p["lat"], p["lon"]] for p in rec_points(rec) if p["lat"] is not None and p["lon"] is not None] if rec else []
+    if pts:
+        ss.focus = {"lat": pts[0][0], "lon": pts[0][1], "points": pts, "nonce": uuid4().hex}
 
 
 def delete_record(rid: str) -> None:
@@ -503,9 +553,12 @@ with col_list:
         rid = rec["id"]
         with st.container(border=True, key=f"rc_{rid}"):
             h_title, h_pin, h_edit, h_del = st.columns([8, 1, 1, 1])
+            has_pts = any(p["lat"] is not None and p["lon"] is not None for p in rec_points(rec))
             with h_title:
-                st.markdown(f'<div class="rc-title">{html.escape(rec.get("trip_title") or "여행")}</div>',
-                            unsafe_allow_html=True)
+                with st.container(key=f"fit_{rid}"):
+                    st.button(rec.get("trip_title") or "여행", key=f"fitb_{rid}", disabled=not has_pts,
+                              help="누르면 지도에서 이 기록을 한눈에 보여줘요", on_click=fit_record, args=(rid,),
+                              use_container_width=True)
             pin = next((_pt(p["lat"], p["lon"]) for p in reversed(rec_points(rec)) if _pt(p["lat"], p["lon"])), None)
             with h_pin:
                 st.button("📍", key=f"fp_{rid}", help="지도에서 보기", disabled=pin is None,
@@ -522,12 +575,12 @@ with col_list:
             _pts = rec_points(rec)
             _fn = _pts[0]["name"] if _pts else ""
             _tn = _pts[-1]["name"] if _pts else ""
-            st.markdown(f'<div class="rc-line">🛫 {html.escape(_fn)} &nbsp;→&nbsp; '
-                        f'🛬 {html.escape(_tn)}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="rc-line">{html.escape(_fn)} &nbsp;→&nbsp; '
+                        f'{html.escape(_tn)}</div>', unsafe_allow_html=True)
             s, e = parse_date(rec.get("start")), parse_date(rec.get("end"))
             stay = stay_text(s, e)
             st.markdown(f'<div class="rc-meta">📅 {fmt_date(s)} ~ {fmt_date(e)} '
-                        f'{"<b>" + stay + "</b> " if stay else ""}· 🌏 {html.escape(rec.get("country", ""))}</div>',
+                        f'{"<b>" + stay + "</b> " if stay else ""}· {flag_of(rec.get("country", ""))} {html.escape(rec.get("country", ""))}</div>',
                         unsafe_allow_html=True)
             memo_lines = [ln.strip() for ln in str(rec.get("memo", "")).split("\n") if ln.strip()]
             if memo_lines:
