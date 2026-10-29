@@ -376,7 +376,7 @@ def sync_poll() -> None:
 sync_poll()
 
 _title = st.session_state.get("trip_title", DEFAULT_TITLE).strip() or DEFAULT_TITLE
-st.title(f" {_title}")
+st.header(f"🚞 {_title}")
 
 if st.session_state.get("msg"):
     st.toast(st.session_state.pop("msg"))
