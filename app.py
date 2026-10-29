@@ -124,7 +124,7 @@ def load_from_upload() -> None:
 
 
 # ---- 공유 저장소 (Firebase Realtime Database REST API) ----
-SHARED_PATH = "trips/shared"
+SHARED_PATH = "trips/shared_v1"
 
 
 def db_base_url() -> str:
@@ -572,13 +572,18 @@ def sync_poll() -> None:
         if st.session_state.synced_json is None:
             st.session_state.synced_json = canon(build_payload())
         return
-    if canon(remote) != st.session_state.synced_json:
-        try:
-            apply_payload(remote)
-        except Exception:
-            return
-        st.session_state.synced_json = canon(build_payload())
-        st.rerun(scope="app")
+    
+    remote_canon = canon(remote)
+    if remote_canon != st.session_state.get("synced_json"):
+        # 누군가 폼을 수정 중일 때는 덮어쓰지 않음 (입력 텍스트 날아감 방지)
+        is_editing = any(st.session_state.editing_flags.values())
+        if not is_editing:
+            try:
+                apply_payload(remote)
+            except Exception:
+                return
+            st.session_state.synced_json = canon(build_payload())
+            st.rerun(scope="app")
 
 
 sync_poll()
@@ -608,6 +613,10 @@ with col_ctrl:
             # 1. 수정 모드
             if is_editing:
                 st.markdown("**✏️ 일정 정보 수정**")
+                
+                # [수정] 수정 모드에서도 체크박스 상태가 유실되지 않게 유지
+                st.checkbox("✅ 방문 완료", key=key)
+                
                 edit_name = st.text_input("장소명", value=spot["name"], key=f"inp_name_{sid}")
                 s_start, s_end = split_time(spot.get("time", ""))
                 edit_start = st.selectbox("시작 시간", time_options(extra=s_start, with_all_day=True),
@@ -735,7 +744,7 @@ with col_ctrl:
                         st.rerun()
 
         with top_c2:
-            with st.popover("💾 저장/불러오기", use_container_width=True):
+            with st.popover("💾 저장", use_container_width=True):
                 st.markdown("##### 💾 여행 저장 / 불러오기")
                 st.text_input("여행 제목", value=st.session_state.get("trip_title", DEFAULT_TITLE),
                               key="title_input", on_change=sync_title)
