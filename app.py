@@ -406,7 +406,7 @@ CSS = """
     [class*="st-key-card_"] [data-testid="stColumn"], [class*="st-key-card_"] [data-testid="column"] {min-width: 0 !important;}
 
     [class*="st-key-hdr_"] [data-testid="stHorizontalBlock"] {gap: 0.6rem !important;}
-    [class*="st-key-hdr_"] [data-testid="stColumn"]:nth-child(1), [class*="st-key-hdr_"] [data-testid="column"]:nth-child(1) {flex: 0 0 1.8rem !important; width: 1.8rem !important;}
+    [class*="st-key-hdr_"] [data-testid="stColumn"]:nth-child(1), [class*="st-key-hdr_"] [data-testid="column"]:nth-child(1) {flex: 0 0 1.5rem !important; width: 1.5rem !important;}
     [class*="st-key-hdr_"] [data-testid="stColumn"]:nth-child(2), [class*="st-key-hdr_"] [data-testid="column"]:nth-child(2) {flex: 1 1 0 !important; width: auto !important;}
     [class*="st-key-hdr_"] [data-testid="stColumn"]:nth-child(n+3), [class*="st-key-hdr_"] [data-testid="column"]:nth-child(n+3) {flex: 0 0 1.2rem !important; width: 1.2rem !important;}
     [class*="st-key-hdr_"] [data-testid="stColumn"]:nth-child(3), [class*="st-key-hdr_"] [data-testid="column"]:nth-child(3) {margin-left: 0.2rem !important;}
