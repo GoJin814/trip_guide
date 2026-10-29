@@ -196,8 +196,7 @@ CSS = """
 
     .st-key-mapbox {margin-bottom: 0 !important;}
     .st-key-progress_wrap {
-        margin-top: -5.0rem !important; 
-        margin-bottom: -5.0rem !important;
+        margin-top: -0.5rem !important; 
     }
     .st-key-mapbox iframe {width: 100% !important; aspect-ratio: 1 / 1;}
 </style>
@@ -356,7 +355,7 @@ def render_embedded_google_map(spots, done_states: list[bool]) -> None:
     spots_json = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     final_html = MAP_TEMPLATE.replace("__SPOTS_JSON__", spots_json)
     with st.container(key="mapbox"):
-        components.html(final_html, height=400)
+        components.html(final_html, height=420)
 
 
 # ======================================================================
