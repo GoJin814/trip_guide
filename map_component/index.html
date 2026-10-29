@@ -22,6 +22,8 @@
   .ctl-box a { width: auto !important; min-width: 30px; padding: 0 7px; font-size: 12px; font-weight: 700;
     line-height: 30px; color: #1E3A8A; text-decoration: none; white-space: nowrap; }
   .ctl-zoom a { font-size: 18px !important; line-height: 28px !important; }
+  .dist-tip { background: #fff; border: 1px solid #CBD5E1; color: #1E3A8A; font-weight: 700; font-size: 11px;
+    border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,0.2); padding: 2px 6px; }
   #status { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); z-index: 1000;
     background: rgba(15,23,42,0.85); color: #fff; font-size: 12px; padding: 5px 10px; border-radius: 8px;
     display: none; pointer-events: none; white-space: nowrap; }
@@ -46,8 +48,10 @@
 </div>
 <script>
 (function () {
-  let map = null, layer = null, userLayer = null, placesLayer = null;
+  let map = null, layer = null, userLayer = null, placesLayer = null, routeLayer = null;
   let lastSpots = [];
+  let lastPlaces = [];
+  let userLL = null, showDist = false, pendingDist = false;
   let placeMarkers = [], lastPlacesKey = null, lastSel = null;
   let compact = false;        // 검색 결과 미리보기(대화상자용) 모드: 버튼 없이 작게
   let autoFit = true;
@@ -80,7 +84,8 @@
   }
 
   function fitAll(animate) {
-    const pts = lastSpots.map(s => [s.lat, s.lon]);
+    const src = lastSpots.length ? lastSpots : lastPlaces;
+    const pts = src.map(s => [s.lat, s.lon]);
     if (!pts.length || !map) return;
     busy = true;
     map.fitBounds(pts, { padding: [30, 30], maxZoom: 16, animate: !!animate });
@@ -117,8 +122,12 @@
       map.flyTo(ll, Math.max(map.getZoom(), 16), { duration: 0.6 });
       busy = false;
       autoFit = false;
+      userLL = ll;
+      if (pendingDist) { pendingDist = false; showDist = true; }
+      updateDist();
     }, function (err) {
       btn.textContent = label;
+      pendingDist = false;
       setStatus(err && err.code === 1 ? '위치 권한이 거부됐어요' : '현재 위치를 찾지 못했어요');
     }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 });
   }
@@ -139,11 +148,37 @@
     map.addControl(new C());
   }
 
-  function ensureMap() {
+  // 내 위치 ↔ 각 지점 직선거리 표시
+  function haversine(a, b) {
+    const R = 6371, toRad = d => d * Math.PI / 180;
+    const dLat = toRad(b[0] - a[0]), dLon = toRad(b[1] - a[1]);
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a[0])) * Math.cos(toRad(b[0])) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+  function updateDist() {
+    placeMarkers.forEach(function (m) {
+      m.unbindTooltip();
+      if (showDist && userLL) {
+        const ll = m.getLatLng();
+        const d = haversine(userLL, [ll.lat, ll.lng]);
+        m.bindTooltip(d < 1 ? Math.round(d * 1000) + 'm' : d.toFixed(1) + 'km',
+          { permanent: true, direction: 'top', offset: [0, -12], className: 'dist-tip' });
+      }
+    });
+  }
+  function toggleDist(btn) {
+    if (showDist) { showDist = false; updateDist(); return; }
+    if (userLL) { showDist = true; updateDist(); return; }
+    pendingDist = true;
+    locate(btn);
+  }
+
+  function ensureMap(args) {
     if (map) return;
     map = L.map('map', { zoomControl: false, attributionControl: false }).setView([37.915, 127.755], 11);
     L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { maxZoom: 19 }).addTo(map);
     layer = L.layerGroup().addTo(map);
+    routeLayer = L.layerGroup().addTo(map);
     placesLayer = L.layerGroup().addTo(map);
     userLayer = L.layerGroup().addTo(map);
 
@@ -152,10 +187,12 @@
         { text: '+', title: '확대', fn: function () { map.zoomIn(); } },
         { text: '−', title: '축소 (한 번 누르면 기본 축적)', fn: function () { zoomOutSmart(); } }
       ], 'ctl-zoom');
-      addBar('topright', [
+      const topItems = [
         { text: '전체 보기', title: '전체 일정 보기', fn: function () { fitAll(true); } },
         { text: '내 위치', title: '현재 내 위치로 이동', fn: function (a) { locate(a); } }
-      ]);
+      ];
+      if (args.distance) topItems.push({ text: '📏 거리', title: '내 위치에서 각 지점까지 거리', fn: function (a) { toggleDist(a); } });
+      addBar('topright', topItems);
 
       // 하단 버튼 줄 (일정 추가 | 순서 변경 | 저장/불러오기)
       const bbar = document.getElementById('bbar');
@@ -190,6 +227,8 @@
       m.addTo(placesLayer);
       placeMarkers.push(m);
     });
+    lastPlaces = places;
+    updateDist();
     const key = JSON.stringify(places.map(p => [p.lat, p.lon]));
     if (places.length && key !== lastPlacesKey) {
       lastPlacesKey = key;
@@ -211,8 +250,8 @@
 
   function render(args) {
     compact = !!args.compact;
-    ensureMap();
-    document.getElementById('bbar').style.display = compact ? 'none' : 'grid';
+    ensureMap(args);
+    document.getElementById('bbar').style.display = (compact || args.bar === false) ? 'none' : 'grid';
     const spots = args.spots || [];
     lastSpots = spots;
     layer.clearLayers();
@@ -239,6 +278,10 @@
       L.marker([spot.lat, spot.lon], { icon: icon, bubblingMouseEvents: false }).bindPopup(popup).addTo(layer);
     });
 
+    routeLayer.clearLayers();
+    (args.routes || []).forEach(function (r) {
+      L.polyline(r, { color: '#F97316', weight: 3, dashArray: '2, 6', opacity: 0.9 }).addTo(routeLayer);
+    });
     renderPlaces(args.places || [], args.selected || 0);
 
     const f = args.focus;
@@ -246,7 +289,7 @@
       lastFocus = f.nonce;
       initialFitDone = true;
       focusOn(f.lat, f.lon);
-    } else if (!initialFitDone && all.length) {
+    } else if (!initialFitDone && (all.length || lastPlaces.length)) {
       initialFitDone = true;
       fitAll(false);
     }
