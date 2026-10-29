@@ -1,8 +1,8 @@
 import copy
-import re
-from urllib.parse import quote
 import json
+import re
 from datetime import datetime
+from urllib.parse import quote
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -80,7 +80,8 @@ def apply_payload(data: dict) -> None:
     for sid, d in dones.items():
         ss[f"chk_{sid}"] = d
     # 이전 수정 폼 입력값 초기화
-    for k in [k for k in ss.keys() if str(k).startswith(("inp_name_", "inp_time_", "inp_start_", "inp_end_", "inp_day_", "inp_tip_"))]:
+    for k in [k for k in ss.keys() if str(k).startswith(
+            ("inp_name_", "inp_time_", "inp_start_", "inp_end_", "inp_day_", "inp_tip_"))]:
         del ss[k]
     ss.trip_title = str(data.get("page_title") or DEFAULT_TITLE)
     ss["title_input"] = ss.trip_title
@@ -93,11 +94,6 @@ def save_filename() -> str:
 
 
 # ---- 콜백 ----
-def reset_checks() -> None:
-    for s in st.session_state.spots_data:
-        st.session_state[f"chk_{s['id']}"] = False
-
-
 def delete_spot(sid: str) -> None:
     ss = st.session_state
     ss.spots_data = [s for s in ss.spots_data if s["id"] != sid]
@@ -113,8 +109,6 @@ def sync_title() -> None:
     st.session_state.trip_title = st.session_state.get("title_input", DEFAULT_TITLE)
 
 
-
-
 def load_from_upload() -> None:
     f = st.session_state.get("upload_file")
     if f is None:
@@ -127,7 +121,7 @@ def load_from_upload() -> None:
         st.session_state.msg = "⚠️ 올바른 일정 파일이 아니에요."
 
 
-# ---- 세션 초기화 (저장된 파일이 있으면 자동으로 불러옴) ----
+# ---- 세션 초기화 ----
 if "spots_data" not in st.session_state:
     st.session_state.spots_data = copy.deepcopy(DEFAULT_SPOTS)
     st.session_state.editing_flags = {}
@@ -147,7 +141,7 @@ CSS = """
     .stCheckbox label {font-size: 0.92rem !important; font-weight: 700 !important; cursor: pointer; color: #111827;}
     .stCheckbox {margin-bottom: 0 !important;}
 
-    /* ---- 일정 카드: 위/아래 여백 균형 (위 0.3rem + 헤더 여백 ≈ 아래 0.55rem + 팁 여백) ---- */
+    /* ---- 일정 카드: 위/아래 여백 균형 ---- */
     div[data-testid="stVerticalBlockBorderWrapper"] {
         padding: 0.3rem 0.75rem 0.55rem 0.75rem !important;
         margin-bottom: 0.4rem !important;
@@ -167,19 +161,19 @@ CSS = """
     [class*="st-key-card_"] [data-testid="stColumn"],
     [class*="st-key-card_"] [data-testid="column"] {min-width: 0 !important;}
 
-    /* 헤더 줄: 왼쪽(체크박스+배지) 가변, 오른쪽 수정 버튼 고정폭 */
+    /* 헤더 줄: 왼쪽(체크박스) 가변, 오른쪽 수정·삭제 버튼 고정폭 */
     [class*="st-key-hdr_"] [data-testid="stColumn"]:first-child,
     [class*="st-key-hdr_"] [data-testid="column"]:first-child {flex: 1 1 0 !important; width: auto !important;}
-    [class*="st-key-hdr_"] [data-testid="stColumn"]:last-child,
-    [class*="st-key-hdr_"] [data-testid="column"]:last-child {flex: 0 0 2.2rem !important; width: 2.2rem !important;}
+    [class*="st-key-hdr_"] [data-testid="stColumn"]:not(:first-child),
+    [class*="st-key-hdr_"] [data-testid="column"]:not(:first-child) {flex: 0 0 2.2rem !important; width: 2.2rem !important;}
 
-    /* 우측 상단 수정 아이콘 버튼 */
-    [class*="st-key-btn_edit_"] button {
+    /* 수정(✏️) · 삭제(🗑️) 아이콘 버튼 */
+    [class*="st-key-btn_edit_"] button, [class*="st-key-btn_del_"] button {
         min-height: 1.9rem !important; height: 1.9rem !important; width: 100% !important;
         padding: 0 !important; border: none !important; background: transparent !important;
     }
 
-    /* 상단 버튼 바: 모바일에서도 한 줄 유지 */
+    /* 하단 버튼 바: 모바일에서도 한 줄 유지 */
     .st-key-topbar [data-testid="stHorizontalBlock"] {
         flex-direction: row !important; flex-wrap: nowrap !important; gap: 0.4rem !important;
     }
@@ -269,7 +263,7 @@ MAP_TEMPLATE = """
         }
         .pin-done { background-color: #16A34A; }
         .pin-yet { background-color: #2563EB; }
-        
+
         .location-btn {
             position: absolute;
             top: 10px;
@@ -372,11 +366,11 @@ MAP_TEMPLATE = """
                 iconAnchor: [12, 12]
             });
 
-            const statusText = spot.done 
-                ? "<span style='color:#16A34A;font-weight:bold;'>🎉 방문 완료</span>" 
+            const statusText = spot.done
+                ? "<span style='color:#16A34A;font-weight:bold;'>🎉 방문 완료</span>"
                 : "<span style='color:#2563EB;font-weight:bold;'>⏳ 예정지</span>";
 
-            const popupContent = 
+            const popupContent =
                 '<div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif; min-width:160px;">' +
                     '<b style="font-size:13px;color:#1E3A8A;">' + esc(spot.name) + '</b><br>' +
                     statusText +
@@ -446,6 +440,7 @@ MAP_TEMPLATE = """
 </html>
 """
 
+
 def render_embedded_google_map(spots, done_states: list[bool]) -> None:
     data = [
         {
@@ -463,6 +458,7 @@ def render_embedded_google_map(spots, done_states: list[bool]) -> None:
     with st.container(key="mapbox"):
         components.html(final_html, height=470)
 
+
 # ---------- 화면 레이아웃 ----------
 st.title(f"🚗 {st.session_state.get('trip_title', DEFAULT_TITLE).strip() or DEFAULT_TITLE}")
 
@@ -477,61 +473,6 @@ n_done = sum(done_flags)
 
 # [우측 컨트롤러 영역]
 with col_ctrl:
-    # 상단 액션 바 (초기화 / 새 일정 추가 / 저장·불러오기)
-    with st.container(key="topbar"):
-        top_c1, top_c2, top_c3 = st.columns([1, 1.25, 1])
-        top_c1.button("🔄 초기화", on_click=reset_checks, use_container_width=True)
-
-        with top_c2:
-            with st.popover("➕ 일정 추가", use_container_width=True):
-                st.markdown("##### 📍 새 장소 등록")
-                new_name = st.text_input("장소명", placeholder="예: 구봉산 카페거리")
-                new_day = st.number_input("일차 (Day)", min_value=1, max_value=99, value=2, step=1)
-                new_start = st.selectbox("시작 시간", time_options(with_all_day=True),
-                                         index=pick_index(time_options(with_all_day=True), "09:00"),
-                                         key="new_start")
-                new_end = st.selectbox("완료 시간", time_options(),
-                                       index=pick_index(time_options(), "10:00"),
-                                       key="new_end", disabled=new_start == "종일")
-                new_time = make_time(new_start, new_end)
-                new_tip = st.text_input("메모/팁", placeholder="예: 소양강 조망 카페")
-                new_lat = st.number_input("위도(Lat)", value=37.8870, format="%.4f")
-                new_lon = st.number_input("경도(Lon)", value=127.7650, format="%.4f")
-
-                if st.button("추가하기", use_container_width=True):
-                    if new_start != "종일" and new_end <= new_start:
-                        st.error("완료 시간은 시작 시간보다 늦어야 해요.")
-                    elif new_name:
-                        new_id = f"custom_{uuid4().hex[:6]}"
-                        st.session_state.spots_data.append(dict(
-                            id=new_id, day=new_day, name=f"{len(spots)+1}. {new_name}",
-                            time=new_time, lat=new_lat, lon=new_lon,
-                            desc="사용자 등록 장소", tip=new_tip
-                        ))
-                        st.session_state[f"chk_{new_id}"] = False
-                        st.session_state.editing_flags[new_id] = False
-                        st.rerun()
-
-        with top_c3:
-            with st.popover("💾 저장", use_container_width=True):
-                st.markdown("##### 💾 여행 저장 / 불러오기")
-                st.text_input("여행 제목", value=st.session_state.get("trip_title", DEFAULT_TITLE),
-                              key="title_input", on_change=sync_title)
-                st.text_input("저장 파일 이름", value="chuncheon_trip", key="save_name")
-                st.caption("이 기기의 다운로드 폴더에 저장돼요. 서버에는 저장되지 않아요.")
-                st.divider()
-                st.download_button(
-                    "⬇️ 내 기기에 저장",
-                    data=json.dumps(build_payload(), ensure_ascii=False, indent=2),
-                    file_name=save_filename(),
-                    mime="application/json",
-                    use_container_width=True,
-                )
-                st.file_uploader("⬆️ 백업 파일 선택", type="json", key="upload_file")
-                st.button("파일에서 불러오기", on_click=load_from_upload, use_container_width=True)
-
-    st.write("")
-
     # 카드 렌더링 함수 (보기 모드 / 수정 모드 전환)
     def render_card(spot, idx):
         sid = spot["id"]
@@ -540,7 +481,7 @@ with col_ctrl:
         is_editing = st.session_state.editing_flags.get(sid, False)
 
         with st.container(border=True, key=f"card_d{spot['day']}_{sid}"):
-            # 1. 수정 모드일 때 (In-place 수정 폼)
+            # 1. 수정 모드
             if is_editing:
                 st.markdown("**✏️ 일정 정보 수정**")
                 edit_name = st.text_input("장소명", value=spot["name"], key=f"inp_name_{sid}")
@@ -571,28 +512,38 @@ with col_ctrl:
                 if b_cancel.button("취소", key=f"cancel_{sid}", use_container_width=True):
                     st.session_state.editing_flags[sid] = False
                     st.rerun()
-                with st.popover("🗑️ 이 일정 삭제", use_container_width=True):
-                    st.write(f"‘{spot['name']}’ 일정을 삭제할까요?")
-                    st.button("삭제 확인", key=f"del_{sid}", type="primary",
-                              on_click=delete_spot, args=(sid,), use_container_width=True)
 
-            # 2. 일반 보기 모드일 때
+            # 2. 보기 모드
             else:
-                time_str = f" ({spot['time']})" if spot.get("time") else ""
-                status = ":green-badge[완료]" if checked else ":gray-badge[대기]"
-                # 장소명(시간) 바로 오른쪽에 상태 배지 + Day를 연속 표시
-                label = f"{spot['name']}{time_str} {status} :gray[Day {spot['day']}]"
-
-                # 헤더 줄: [체크박스 + 배지 + Day] ........ [✏️ 우측 상단]
+                # 헤더: [체크박스(장소명)] ..... [✏️] [🗑️]
                 with st.container(key=f"hdr_{sid}"):
-                    c_content, c_btn = st.columns([6, 1])
-                    with c_content:
-                        st.checkbox(label, key=key)
-                    with c_btn:
+                    c_name, c_edit, c_del = st.columns([6, 1, 1])
+                    with c_name:
+                        st.checkbox(spot["name"], key=key)
+                    with c_edit:
                         if st.button("✏️", key=f"btn_edit_{sid}", help="일정 수정"):
                             st.session_state.editing_flags[sid] = True
                             st.rerun()
+                    with c_del:
+                        with st.container(key=f"btn_del_{sid}"):
+                            with st.popover("🗑️", help="일정 삭제"):
+                                st.write(f"‘{spot['name']}’ 일정을 삭제할까요?")
+                                st.button("삭제 확인", key=f"del_{sid}", type="primary",
+                                          on_click=delete_spot, args=(sid,), use_container_width=True)
 
+                # 2줄째: 시간 · 대기/완료 · Day
+                time_part = f"⏱ {spot['time']} &nbsp;" if spot.get("time") else ""
+                badge = ('<span style="background:#DCFCE7;color:#15803D;padding:1px 7px;'
+                         'border-radius:9999px;font-weight:700;">완료</span>' if checked else
+                         '<span style="background:#F1F5F9;color:#64748B;padding:1px 7px;'
+                         'border-radius:9999px;font-weight:700;">대기</span>')
+                st.markdown(
+                    f'<div style="font-size:0.8rem;color:#374151;margin:-4px 0 0 2px;">'
+                    f'{time_part}{badge} &nbsp;<b style="color:#6B7280;">Day {spot["day"]}</b></div>',
+                    unsafe_allow_html=True,
+                )
+
+                # 3줄째: 팁 · 네이버 검색 링크
                 q = quote(re.sub(r"^\d+\.\s*", "", spot["name"]))
                 st.caption(f"💡 {spot['tip']} · [🔍 네이버 검색](https://search.naver.com/search.naver?query={q})")
 
@@ -604,6 +555,58 @@ with col_ctrl:
         if i + 1 < len(spots):
             with row_c2:
                 render_card(spots[i + 1], i + 1)
+
+    # 하단 버튼 바: 일정 추가 / 저장
+    with st.container(key="topbar"):
+        top_c1, top_c2 = st.columns(2)
+
+        with top_c1:
+            with st.popover("➕ 일정 추가", use_container_width=True):
+                st.markdown("##### 📍 새 장소 등록")
+                new_name = st.text_input("장소명", placeholder="예: 구봉산 카페거리")
+                new_day = st.number_input("일차 (Day)", min_value=1, max_value=99, value=2, step=1)
+                new_start = st.selectbox("시작 시간", time_options(with_all_day=True),
+                                         index=pick_index(time_options(with_all_day=True), "09:00"),
+                                         key="new_start")
+                new_end = st.selectbox("완료 시간", time_options(),
+                                       index=pick_index(time_options(), "10:00"),
+                                       key="new_end", disabled=new_start == "종일")
+                new_time = make_time(new_start, new_end)
+                new_tip = st.text_input("메모/팁", placeholder="예: 소양강 조망 카페")
+                new_lat = st.number_input("위도(Lat)", value=37.8870, format="%.4f")
+                new_lon = st.number_input("경도(Lon)", value=127.7650, format="%.4f")
+
+                if st.button("추가하기", use_container_width=True):
+                    if new_start != "종일" and new_end <= new_start:
+                        st.error("완료 시간은 시작 시간보다 늦어야 해요.")
+                    elif new_name:
+                        new_id = f"custom_{uuid4().hex[:6]}"
+                        st.session_state.spots_data.append(dict(
+                            id=new_id, day=new_day, name=f"{len(spots)+1}. {new_name}",
+                            time=new_time, lat=new_lat, lon=new_lon,
+                            desc="사용자 등록 장소", tip=new_tip
+                        ))
+                        st.session_state[f"chk_{new_id}"] = False
+                        st.session_state.editing_flags[new_id] = False
+                        st.rerun()
+
+        with top_c2:
+            with st.popover("💾 저장", use_container_width=True):
+                st.markdown("##### 💾 여행 저장 / 불러오기")
+                st.text_input("여행 제목", value=st.session_state.get("trip_title", DEFAULT_TITLE),
+                              key="title_input", on_change=sync_title)
+                st.text_input("저장 파일 이름", value="chuncheon_trip", key="save_name")
+                st.caption("이 기기의 다운로드 폴더에 저장돼요. 서버에는 저장되지 않아요.")
+                st.divider()
+                st.download_button(
+                    "⬇️ 내 기기에 저장",
+                    data=json.dumps(build_payload(), ensure_ascii=False, indent=2),
+                    file_name=save_filename(),
+                    mime="application/json",
+                    use_container_width=True,
+                )
+                st.file_uploader("⬆️ 백업 파일 선택", type="json", key="upload_file")
+                st.button("파일에서 불러오기", on_click=load_from_upload, use_container_width=True)
 
 # [좌측 지도 영역]
 with col_map:
