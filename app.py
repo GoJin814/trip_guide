@@ -409,7 +409,7 @@ CSS = """
     [class*="st-key-hdr_"] [data-testid="stColumn"]:nth-child(1), [class*="st-key-hdr_"] [data-testid="column"]:nth-child(1) {flex: 0 0 1.8rem !important; width: 1.8rem !important;}
     [class*="st-key-hdr_"] [data-testid="stColumn"]:nth-child(2), [class*="st-key-hdr_"] [data-testid="column"]:nth-child(2) {flex: 1 1 0 !important; width: auto !important;}
     [class*="st-key-hdr_"] [data-testid="stColumn"]:nth-child(n+3), [class*="st-key-hdr_"] [data-testid="column"]:nth-child(n+3) {flex: 0 0 1.2rem !important; width: 1.2rem !important;}
-    [class*="st-key-hdr_"] [data-testid="stColumn"]:nth-child(3), [class*="st-key-hdr_"] [data-testid="column"]:nth-child(3) {margin-left: 0.4rem !important;}
+    [class*="st-key-hdr_"] [data-testid="stColumn"]:nth-child(3), [class*="st-key-hdr_"] [data-testid="column"]:nth-child(3) {margin-left: 0.2rem !important;}
 
     [class*="st-key-btn_del_"] button svg, [class*="st-key-btn_del_"] button [data-testid="stIconMaterial"] {display: none !important;}
     [class*="st-key-btn_del_"] button {justify-content: center !important;}
