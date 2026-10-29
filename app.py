@@ -471,7 +471,7 @@ st.set_page_config(
 # ======================================================================
 CSS = """
 <style>
-    .block-container {padding: 3.8rem 0.6rem 2rem 0.6rem !important;}
+    .block-container {padding: 1.8rem 0.6rem 2rem 0.6rem !important;}
     [data-testid="stExpandSidebarButton"], [data-testid="stSidebarCollapseButton"],
     [data-testid="stSidebarCollapsedControl"], [data-testid="collapsedControl"],
     [data-testid="stSidebar"] {display: none !important;}
