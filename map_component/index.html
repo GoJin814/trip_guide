@@ -118,9 +118,11 @@
         fillColor: '#2563EB', fillOpacity: 0.12 }).addTo(userLayer);
       L.marker(ll, { interactive: false, icon: L.divIcon({ className: '',
         html: '<div class="user-dot"></div>', iconSize: [16, 16], iconAnchor: [8, 8] }) }).addTo(userLayer);
-      busy = true;
-      map.flyTo(ll, Math.max(map.getZoom(), 16), { duration: 0.6 });
-      busy = false;
+      if (!pendingDist) {  // '거리' 버튼으로 요청한 경우에는 보던 위치를 그대로 유지
+        busy = true;
+        map.flyTo(ll, Math.max(map.getZoom(), 16), { duration: 0.6 });
+        busy = false;
+      }
       autoFit = false;
       userLL = ll;
       if (pendingDist) { pendingDist = false; showDist = true; }
