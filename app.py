@@ -572,7 +572,7 @@ _trip_len = f"({_max_day - 1}박 {_max_day}일)"
 _row_style = ("height:2.4rem;display:flex;align-items:center;font-size:0.9rem;"
               "font-weight:700;color:#374151;white-space:nowrap;")
 with st.container(key="daybar"):
-    d_sp, d_lbl, d_date, d_len = st.columns([3, 1.1, 3.2, 1.1])
+    d_sp, d_lbl, d_date, d_len = st.columns([3, 1.1, 2.8, 1.1])
     with d_lbl:
         st.markdown(f'<div style="{_row_style}justify-content:flex-end;">여행 시작:</div>',
                     unsafe_allow_html=True)
