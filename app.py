@@ -30,6 +30,9 @@ DEFAULT_SPOTS = [
 MAP_COMPONENT = components.declare_component(
     "trip_map", path=str(Path(__file__).parent / "map_component")
 )
+SORT_COMPONENT = components.declare_component(
+    "trip_sort", path=str(Path(__file__).parent / "sort_component")
+)
 
 # 구글 장소 검색 기준 (춘천 시내 중심, 반경 30km)
 CHUNCHEON_CENTER = (37.8813, 127.7298)
@@ -128,6 +131,59 @@ def day_label(d: int) -> str:
     return base
 
 
+def _mins(t: str) -> int:
+    h, m = t.split(":")
+    return int(h) * 60 + int(m)
+
+
+def _hhmm(v: int) -> str:
+    return f"{v // 60:02d}:{v % 60:02d}"
+
+
+def _is_timed(s: dict) -> bool:
+    return bool(s.get("time")) and split_time(s["time"])[0] != "종일"
+
+
+def apply_reorder(order: list, moved: str) -> None:
+    """드래그로 바뀐 순서 적용: 옮긴 일정은 앞뒤 일정 사이 시간(a 규칙)으로, Day는 자리에 맞춤.
+    종일 일정은 시간을 바꾸지 않음."""
+    ss = st.session_state
+    by_id = {s["id"]: s for s in ss.spots_data}
+    if set(order) != set(by_id) or moved not in by_id:
+        return
+    new = [by_id[i] for i in order]
+    idx = order.index(moved)
+    m = by_id[moved]
+    prev = new[idx - 1] if idx > 0 else None
+    nxt = new[idx + 1] if idx + 1 < len(new) else None
+
+    if _is_timed(m):
+        a, b = split_time(m["time"])
+        dur = max(_mins(b) - _mins(a), 30)
+        p_end = split_time(prev["time"])[1] if prev and _is_timed(prev) else None
+        n_start = split_time(nxt["time"])[0] if nxt and _is_timed(nxt) else None
+        if p_end and n_start and _mins(n_start) > _mins(p_end):
+            start, end = p_end, n_start                       # 앞 끝 ~ 뒤 시작 사이
+        elif p_end:
+            start = p_end
+            end = _hhmm(min(_mins(start) + dur, 23 * 60 + 30))
+        elif n_start:
+            end = n_start
+            start = _hhmm(max(_mins(end) - dur, 5 * 60))
+        else:
+            start, end = a, b
+        m["time"] = f"{start}~{end}"
+
+    if nxt:
+        m["day"] = int(nxt["day"])
+    elif prev:
+        m["day"] = int(prev["day"])
+
+    ss.spots_data = new  # 드래그한 순서를 그대로 유지 (자동 정렬하지 않음)
+    if ss.synced_json is not None and push_remote(build_payload()):
+        ss.synced_json = canon(build_payload())
+
+
 def day_color_css() -> str:
     rules = []
     for d in sorted({int(s["day"]) for s in st.session_state.spots_data}):
@@ -185,7 +241,6 @@ def apply_payload(data: dict) -> None:
             ss["trip_start_input"] = date.fromisoformat(str(data["start_date"]))
     except ValueError:
         pass
-    sort_spots()
 
 
 def save_filename() -> str:
@@ -478,7 +533,7 @@ def add_spot_dialog() -> None:
     ss = st.session_state
     st.caption("💡 지도를 누르면 그 위치 좌표가 자동 입력돼요.")
     with st.expander("🔎 구글 지도에서 장소 찾기", expanded=True):
-        st.text_input("검색어", placeholder="예: 인천 센트럴파크", key="place_query")
+        st.text_input("검색어", placeholder="예: 통나무집 본점", key="place_query")
         st.button("검색", on_click=run_place_search, use_container_width=True)
         if ss.get("place_msg"):
             st.caption(ss.place_msg)
@@ -493,14 +548,14 @@ def add_spot_dialog() -> None:
             st.button("이 장소로 채우기", on_click=use_place, use_container_width=True)
 
     st.markdown("##### 📍 장소 정보")
-    new_name = st.text_input("장소명", key="new_name", placeholder="예: 인천국제공항")
+    new_name = st.text_input("장소명", key="new_name", placeholder="예: 구봉산 카페거리")
     new_day = st.number_input("일차 (Day)", min_value=1, max_value=99, value=2, step=1, key="new_day")
     new_start = st.selectbox("시작 시간", time_options(with_all_day=True),
                              index=pick_index(time_options(with_all_day=True), "09:00"), key="new_start")
     new_end = st.selectbox("완료 시간", time_options(), index=pick_index(time_options(), "10:00"),
                            key="new_end", disabled=new_start == "종일")
     new_time = make_time(new_start, new_end)
-    new_tip = st.text_area("메모/팁 (Enter로 줄바꿈)", placeholder="예: 여행 출발", height=90, key="new_tip")
+    new_tip = st.text_area("메모/팁 (Enter로 줄바꿈)", placeholder="예: 소양강 조망 카페", height=90, key="new_tip")
     new_lat = st.number_input("위도(Lat)", value=float(ss.pick_lat), format="%.4f", key=f"new_lat_{ss.pick_key}")
     new_lon = st.number_input("경도(Lon)", value=float(ss.pick_lon), format="%.4f", key=f"new_lon_{ss.pick_key}")
 
@@ -538,6 +593,23 @@ def save_dialog() -> None:
     # 콜백으로 실행해야 위젯(제목 입력칸 등)을 그리기 전에 값을 바꿀 수 있음
     st.button("파일에서 불러오기", use_container_width=True, on_click=load_from_upload)
     if st.session_state.pop("reload_now", False):
+        st.rerun()
+
+
+@st.dialog("🔀 일정 순서 변경")
+def reorder_dialog() -> None:
+    ss = st.session_state
+    st.caption("⠿ 손잡이를 끌어 원하는 자리에 놓으세요. 앞뒤 일정 사이 시간으로 자동 조정되고, "
+               "Day도 그 자리에 맞춰 바뀌어요. 종일 일정은 시간이 그대로예요.")
+    items = [{"id": s["id"], "name": s["name"], "day": int(s["day"]), "time": s.get("time", "")}
+             for s in ss.spots_data]
+    val = SORT_COMPONENT(items=items, key="sort_pick", default=None)
+    if isinstance(val, dict) and val.get("nonce") != ss.get("last_sort_nonce"):
+        ss.last_sort_nonce = val.get("nonce")
+        apply_reorder(val.get("order", []), val.get("moved", ""))
+        ss.msg = "🔀 일정 순서를 바꿨어요."
+        st.rerun()  # 대화상자를 닫고 카드 화면을 새로 그림
+    if st.button("닫기", use_container_width=True):
         st.rerun()
 
 
@@ -588,7 +660,7 @@ sync_poll()
 # 화면
 # ======================================================================
 _title = st.session_state.get("trip_title", DEFAULT_TITLE).strip() or DEFAULT_TITLE
-st.markdown(f"<div style='font-size: 1.6rem; font-weight: 800; padding-bottom: 0.3rem;'>🚞 {_title}</div>",
+st.markdown(f"<div style='font-size: 1.6rem; font-weight: 800; padding-bottom: 0.3rem;'> {_title}</div>",
             unsafe_allow_html=True)
 
 if st.session_state.get("msg"):
@@ -702,6 +774,8 @@ with col_ctrl:
                                 f'{tip_items}</div>', unsafe_allow_html=True)
                 st.markdown('<div style="height:1rem;"></div>', unsafe_allow_html=True)
 
+    if st.button("🔀 순서 변경", key="open_reorder", use_container_width=True):
+        reorder_dialog()
     if not spots:
         st.info("이 날짜에는 아직 일정이 없어요. ‘➕ 일정 추가’로 넣어 보세요.")
     for i in range(0, len(spots), 2):
