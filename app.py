@@ -670,7 +670,6 @@ with col_ctrl:
                 render_card(spots[i + 1])
 
 with col_map:
-    st.caption("💡 지도 하단 ‘➕ 일정 추가’와 ‘💾 저장/불러오기’ 버튼을 사용할 수 있어요.")
 
     map_data = [
         {"name": f"{s['name']} ({s.get('time', '')})" if s.get("time") else s["name"],
