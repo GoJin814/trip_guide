@@ -130,7 +130,7 @@ def day_label(d: int) -> str:
     start = st.session_state.get("trip_start_input")
     if isinstance(start, date):
         dt = start + timedelta(days=d - 1)
-        base += f" · {dt.month}/{dt.day}({WEEKDAYS[dt.weekday()]})"
+        base += f" · {dt.month}/{dt.day}"
     return base
 
 
@@ -387,7 +387,7 @@ st.set_page_config(
 # ======================================================================
 CSS = """
 <style>
-    .block-container {padding: 4rem 0.6rem 2rem 0.6rem !important;}
+    .block-container {padding: 3.8rem 0.6rem 2rem 0.6rem !important;}
     /* 당겨서 새로고침 방해 요소 제거: 모든 스크롤 영역의 overscroll을 기본값(auto)으로 */
     *, *::before, *::after {overscroll-behavior-y: auto !important;}
     .stCheckbox label {font-size: 0.92rem !important; font-weight: 700 !important; cursor: pointer; color: #111827;}
@@ -418,13 +418,15 @@ CSS = """
 
     .st-key-mapbox {margin-bottom: 0 !important;}
     /* 지도 iframe: 세로 스와이프는 브라우저(페이지 스크롤/당겨서 새로고침)에 넘김 */
-    .st-key-mapbox iframe {touch-action: pan-y !important;}
-    .st-key-progress_wrap {margin-top: 0.5rem !important;}
+    .st-key-mapbox iframe {touch-action: pan-y !important; display: block;}
+    .st-key-progress_row {margin-top: 0 !important;}
     /* 여행 시작일 + 일정 보기: 한 줄 고정 */
     .st-key-daybar [data-testid="stHorizontalBlock"] {flex-direction: row !important; flex-wrap: nowrap !important; gap: 0.4rem !important;}
     .st-key-daybar [data-testid="stColumn"], .st-key-daybar [data-testid="column"] {min-width: 0 !important;}
-    .st-key-daybar [data-testid="stWidgetLabel"] {display: none !important;}
-    .st-key-daybar div[data-baseweb="select"] > div, .st-key-daybar input {min-height: 2rem !important; font-size: 0.85rem !important;}
+    .st-key-daybar input {min-height: 2.4rem !important;}
+    .st-key-progress_row [data-testid="stHorizontalBlock"] {flex-direction: row !important; flex-wrap: nowrap !important; gap: 0.5rem !important; align-items: center !important;}
+    .st-key-progress_row [data-testid="stColumn"], .st-key-progress_row [data-testid="column"] {min-width: 0 !important;}
+    .st-key-progress_row div[data-baseweb="select"] > div {min-height: 2rem !important; font-size: 0.8rem !important;}
 </style>
 """
 st.markdown(CSS + day_color_css(), unsafe_allow_html=True)
@@ -563,14 +565,14 @@ _days = sorted({int(s["day"]) for s in all_spots})
 _day_opts = [0] + _days  # 0 = 전체
 if st.session_state.get("day_filter") not in _day_opts:
     st.session_state.day_filter = 0
+sel_day = st.session_state.day_filter
 with st.container(key="daybar"):
-    d_c1, d_c2 = st.columns([1, 1])
+    d_c1, d_c2 = st.columns([1.2, 2])
     with d_c1:
-        st.date_input("여행 시작일", key="trip_start_input", label_visibility="collapsed")
+        st.markdown('<div style="height:2.4rem;display:flex;align-items:center;font-size:0.9rem;'
+                    'font-weight:700;color:#374151;white-space:nowrap;">여행 시작:</div>', unsafe_allow_html=True)
     with d_c2:
-        sel_day = st.selectbox("일정 보기", _day_opts,
-                               format_func=lambda d: "전체" if d == 0 else day_label(d),
-                               key="day_filter", label_visibility="collapsed")
+        st.date_input("여행 시작일", key="trip_start_input", label_visibility="collapsed")
 
 spots = [s for s in all_spots if sel_day == 0 or int(s["day"]) == sel_day]
 done_flags = [st.session_state.done.get(s["id"], False) for s in spots]
@@ -679,9 +681,14 @@ with col_map:
     with st.container(key="mapbox"):
         MAP_COMPONENT(spots=map_data, focus=st.session_state.get("focus"), key="map_pick", default=None)
 
-    with st.container(key="progress_wrap"):
-        st.progress(n_done / total_all,
-                    text=f"진행률: {n_done} / {len(all_spots)} 코스 완료 ({n_done * 100 // total_all}%)")
+    with st.container(key="progress_row"):
+        p_c1, p_c2 = st.columns([7, 3])
+        with p_c1:
+            st.progress(n_done / total_all, text=f"행복 충전율: {n_done * 100 // total_all}%")
+        with p_c2:
+            st.selectbox("일정 보기", _day_opts,
+                         format_func=lambda d: "전체" if d == 0 else day_label(d),
+                         key="day_filter", label_visibility="collapsed")
 
 # ======================================================================
 # 변경 사항 공유 (값이 실제로 바뀐 경우에만 전송)
