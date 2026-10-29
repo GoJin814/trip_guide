@@ -3,243 +3,108 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
-  html, body { margin: 0; padding: 0; height: 100%; background: transparent; overflow: hidden; overscroll-behavior: auto; }
-  #map { width: 100%; height: 100%; border-radius: 12px; position: relative; }
-  /* 세로 스와이프(페이지 스크롤·당겨서 새로고침)는 브라우저에 넘기고, 가로 드래그만 지도가 처리 */
-  .leaflet-container, .leaflet-container.leaflet-touch-drag, .leaflet-container.leaflet-touch-drag.leaflet-touch-zoom {
-    touch-action: pan-y !important; }
-  .custom-pin { border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center;
-    justify-content: center; color: white; font-weight: bold; font-size: 11px; border: 2px solid white;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
-  .pin-done { background-color: #16A34A; }
-  .pin-yet { background-color: #2563EB; }
-  .pin-place { background-color: #F97316; }
-  .user-dot { width: 16px; height: 16px; border-radius: 50%; background: #2563EB; border: 3px solid #fff;
-    box-shadow: 0 0 0 2px rgba(37,99,235,0.35); }
-  .ctl-box a { width: auto !important; min-width: 30px; padding: 0 7px; font-size: 12px; font-weight: 700;
-    line-height: 30px; color: #1E3A8A; text-decoration: none; white-space: nowrap; }
-  #status { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); z-index: 1000;
-    background: rgba(15,23,42,0.85); color: #fff; font-size: 12px; padding: 5px 10px; border-radius: 8px;
-    display: none; pointer-events: none; white-space: nowrap; }
+  html, body { margin: 0; padding: 0; background: transparent; font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif; }
+  #list { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 2px; }
+  .row { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #CBD5E1;
+    border-radius: 10px; padding: 8px 10px; user-select: none; -webkit-user-select: none; }
+  .row.dragging { box-shadow: 0 6px 16px rgba(0,0,0,0.22); position: relative; z-index: 5; }
+  .handle { touch-action: none; cursor: grab; font-size: 20px; color: #64748B; padding: 2px 6px; line-height: 1; }
+  .info { flex: 1; min-width: 0; }
+  .name { font-weight: 700; font-size: 14px; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .meta { font-size: 12px; color: #4B5563; margin-top: 2px; }
+  .day { font-size: 11px; font-weight: 700; color: #1E3A8A; background: #E0E7FF; border-radius: 6px; padding: 2px 6px; white-space: nowrap; }
 </style>
 </head>
 <body>
-<div id="map"><div id="status"></div></div>
+<div id="list"></div>
 <script>
 (function () {
-  let map = null, layer = null, userLayer = null, placesLayer = null;
-  let lastSpots = [];
-  let placeMarkers = [], lastPlacesKey = null, lastSel = null;
-  let compact = false;        // 검색 결과 미리보기(대화상자용) 모드: 버튼 없이 작게
-  let autoFit = true;
-  let initialFitDone = false;
-  let busy = false;
-  let lastFocus = null;
+  const list = document.getElementById('list');
+  let dragEl = null, startY = 0, lastOrder = [];
 
   function send(type, data) {
-    window.parent.postMessage(Object.assign({ isStreamlitMessage: true, type: type }, data || {}), "*");
+    window.parent.postMessage(Object.assign({ isStreamlitMessage: true, type: type }, data || {}), '*');
   }
   function esc(t) {
-    return String(t == null ? "" : t).replace(/[&<>"']/g,
+    return String(t == null ? '' : t).replace(/[&<>"']/g,
       c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
   }
-  function setStatus(msg) {
-    const el = document.getElementById('status');
-    el.textContent = msg;
-    el.style.display = 'block';
-    clearTimeout(setStatus.t);
-    setStatus.t = setTimeout(function () { el.style.display = 'none'; }, 2600);
-  }
   function setHeight() {
-    const w = document.getElementById('map').clientWidth;
-    if (w > 0) send('streamlit:setFrameHeight', { height: Math.round(compact ? Math.min(w, 320) : w) });
-    if (map) map.invalidateSize();
-  }
-  function sendAction(name) {
-    send('streamlit:setComponentValue', { value: { action: name, nonce: Date.now() }, dataType: 'json' });
+    send('streamlit:setFrameHeight', { height: Math.ceil(list.getBoundingClientRect().height) + 8 });
   }
 
-  function fitAll(animate) {
-    const pts = lastSpots.map(s => [s.lat, s.lon]);
-    if (!pts.length || !map) return;
-    busy = true;
-    map.fitBounds(pts, { padding: [30, 30], maxZoom: 16, animate: !!animate });
-    busy = false;
-    autoFit = true;
-  }
-  function focusOn(lat, lon) {
-    busy = true;
-    map.flyTo([lat, lon], Math.max(map.getZoom(), 15), { duration: 0.6 });
-    busy = false;
-    autoFit = false;
-  }
-  function locate(btn) {
-    if (!navigator.geolocation) { setStatus('이 브라우저는 위치 기능을 지원하지 않아요'); return; }
-    const label = btn.textContent;
-    btn.textContent = '…';
-    navigator.geolocation.getCurrentPosition(function (pos) {
-      btn.textContent = label;
-      const ll = [pos.coords.latitude, pos.coords.longitude];
-      userLayer.clearLayers();
-      L.circle(ll, { radius: pos.coords.accuracy, color: '#2563EB', weight: 1,
-        fillColor: '#2563EB', fillOpacity: 0.12 }).addTo(userLayer);
-      L.marker(ll, { interactive: false, icon: L.divIcon({ className: '',
-        html: '<div class="user-dot"></div>', iconSize: [16, 16], iconAnchor: [8, 8] }) }).addTo(userLayer);
-      busy = true;
-      map.flyTo(ll, Math.max(map.getZoom(), 16), { duration: 0.6 });
-      busy = false;
-      autoFit = false;
-    }, function (err) {
-      btn.textContent = label;
-      setStatus(err && err.code === 1 ? '위치 권한이 거부됐어요' : '현재 위치를 찾지 못했어요');
-    }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 });
-  }
-  function addBar(position, items) {
-    const C = L.Control.extend({
-      options: { position: position },
-      onAdd: function () {
-        const box = L.DomUtil.create('div', 'leaflet-bar ctl-box');
-        items.forEach(function (it) {
-          const a = L.DomUtil.create('a', '', box);
-          a.href = '#'; a.title = it.title; a.textContent = it.text;
-          L.DomEvent.on(a, 'click', function (e) { L.DomEvent.preventDefault(e); it.fn(a); });
-        });
-        L.DomEvent.disableClickPropagation(box);
-        return box;
-      }
+  function render(items) {
+    list.innerHTML = '';
+    items.forEach(function (it) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.dataset.id = it.id;
+      row.innerHTML = '<span class="handle" title="끌어서 순서 변경">⠿</span>' +
+        '<div class="info"><div class="name">' + esc(it.name) + '</div>' +
+        '<div class="meta">' + esc(it.time || '') + '</div></div>' +
+        '<span class="day">Day ' + esc(it.day) + '</span>';
+      row.querySelector('.handle').addEventListener('pointerdown', onDown);
+      list.appendChild(row);
     });
-    map.addControl(new C());
-  }
-
-  function ensureMap() {
-    if (map) return;
-    map = L.map('map', { zoomControl: true, attributionControl: false }).setView([37.915, 127.755], 11);
-    L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { maxZoom: 19 }).addTo(map);
-    layer = L.layerGroup().addTo(map);
-    placesLayer = L.layerGroup().addTo(map);
-    userLayer = L.layerGroup().addTo(map);
-
-    if (!compact) {
-      addBar('topright', [
-        { text: '전체 보기', title: '전체 일정 보기', fn: function () { fitAll(true); } },
-        { text: '내 위치', title: '현재 내 위치로 이동', fn: function (a) { locate(a); } }
-      ]);
-      addBar('bottomleft', [
-        { text: '➕ 일정 추가', title: '일정 추가', fn: function () { sendAction('add'); } }
-      ]);
-      addBar('bottomright', [
-        { text: '💾 저장/불러오기', title: '저장 또는 불러오기', fn: function () { sendAction('save'); } }
-      ]);
-    }
-
-    map.on('dragstart', function () { autoFit = false; });
-    map.on('zoomstart', function () { if (!busy) autoFit = false; });
-    map.on('click', function (e) {
-      autoFit = false;
-      send('streamlit:setComponentValue', {
-        value: { lat: e.latlng.lat, lon: e.latlng.lng, nonce: Date.now() },
-        dataType: 'json'
-      });
-    });
-  }
-
-  // 구글 검색 결과 표시 (주황색 번호 핀). 결과가 바뀌면 전체가 보이도록 맞추고, 선택한 항목은 말풍선을 연다.
-  function renderPlaces(places, sel) {
-    placesLayer.clearLayers();
-    placeMarkers = [];
-    places.forEach(function (p, i) {
-      const icon = L.divIcon({ className: '', html: '<div class="custom-pin pin-place">' + (i + 1) + '</div>',
-        iconSize: [24, 24], iconAnchor: [12, 12] });
-      const popup = '<div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;min-width:140px;">' +
-        '<b style="font-size:13px;color:#9A3412;">' + esc(p.name) + '</b>' +
-        '<p style="margin:3px 0 0;font-size:11px;color:#334155;">' + esc(p.addr) + '</p></div>';
-      const m = L.marker([p.lat, p.lon], { icon: icon, bubblingMouseEvents: false }).bindPopup(popup);
-      m.addTo(placesLayer);
-      placeMarkers.push(m);
-    });
-    const key = JSON.stringify(places.map(p => [p.lat, p.lon]));
-    if (places.length && key !== lastPlacesKey) {
-      lastPlacesKey = key;
-      lastSel = null;
-      busy = true;
-      map.fitBounds(places.map(p => [p.lat, p.lon]), { padding: [30, 30], maxZoom: 16, animate: false });
-      busy = false;
-    }
-    if (!places.length) { lastPlacesKey = null; lastSel = null; }
-    if (places.length && sel !== lastSel && placeMarkers[sel]) {
-      lastSel = sel;
-      const m = placeMarkers[sel];
-      busy = true;
-      map.panTo(m.getLatLng(), { animate: true });
-      busy = false;
-      m.openPopup();
-    }
-  }
-
-  function render(args) {
-    compact = !!args.compact;
-    ensureMap();
-    const spots = args.spots || [];
-    lastSpots = spots;
-    layer.clearLayers();
-
-    const all = spots.map(s => [s.lat, s.lon]);
-    if (all.length) L.polyline(all, { color: '#64748B', weight: 3, dashArray: '6, 8', opacity: 0.65 }).addTo(layer);
-    const visited = spots.filter(s => s.done).map(s => [s.lat, s.lon]);
-    if (visited.length >= 2) L.polyline(visited, { color: '#2563EB', weight: 6, opacity: 0.95 }).addTo(layer);
-
-    spots.forEach(function (spot, i) {
-      const icon = L.divIcon({
-        className: '',
-        html: '<div class="custom-pin ' + (spot.done ? 'pin-done' : 'pin-yet') + '">' + (spot.done ? '✓' : (i + 1)) + '</div>',
-        iconSize: [24, 24], iconAnchor: [12, 12]
-      });
-      const status = spot.done
-        ? "<span style='color:#16A34A;font-weight:bold;'>🛂 여행 완료</span>"
-        : "<span style='color:#2563EB;font-weight:bold;'>🗺️ 여행 전</span>";
-      const popup = '<div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;min-width:160px;">' +
-        '<b style="font-size:13px;color:#1E3A8A;">' + esc(spot.name) + '</b><br>' + status +
-        '<p style="margin:4px 0;font-size:11px;color:#334155;">' + esc(spot.desc) + '</p>' +
-        '<div style="background:#FEF3C7;color:#B45309;padding:2px 5px;border-radius:4px;font-size:10px;white-space:pre-line;">' +
-        esc(spot.tip) + '</div></div>';
-      L.marker([spot.lat, spot.lon], { icon: icon, bubblingMouseEvents: false }).bindPopup(popup).addTo(layer);
-    });
-
-    renderPlaces(args.places || [], args.selected || 0);
-
-    const f = args.focus;
-    if (f && f.nonce && f.nonce !== lastFocus) {
-      lastFocus = f.nonce;
-      initialFitDone = true;
-      focusOn(f.lat, f.lon);
-    } else if (!initialFitDone && all.length) {
-      initialFitDone = true;
-      fitAll(false);
-    }
+    lastOrder = items.map(it => it.id);
     setHeight();
   }
 
-  // ---- 당겨서 새로고침: 지도 위에서 시작한 터치도 부모 페이지에 전달 (일정 지도에서만) ----
-  ['touchstart', 'touchmove', 'touchend'].forEach(function (t) {
-    document.addEventListener(t, function (e) {
-      if (compact) return;
-      const phase = t === 'touchstart' ? 'start' : (t === 'touchmove' ? 'move' : 'end');
-      const y = e.touches && e.touches[0] ? e.touches[0].clientY : null;
-      window.parent.postMessage({ type: 'trip-touch', phase: phase, y: y }, '*');
-    }, { passive: true });
-  });
+  function onDown(e) {
+    e.preventDefault();
+    const handle = e.currentTarget;
+    dragEl = handle.closest('.row');
+    startY = e.clientY;
+    dragEl.classList.add('dragging');
+    handle.setPointerCapture(e.pointerId);
+    handle.addEventListener('pointermove', onMove);
+    handle.addEventListener('pointerup', onUp);
+    handle.addEventListener('pointercancel', onUp);
+  }
+
+  function onMove(e) {
+    if (!dragEl) return;
+    const dy = e.clientY - startY;
+    const visualCenter = dragEl.offsetTop + dy + dragEl.offsetHeight / 2;
+    const next = dragEl.nextElementSibling;
+    const prev = dragEl.previousElementSibling;
+    // 자리를 바꿀 때 화면에서 끌고 있는 카드가 튀지 않도록 기준점(startY)을 같이 보정
+    if (next && visualCenter > next.offsetTop + next.offsetHeight / 2) {
+      const old = dragEl.offsetTop;
+      list.insertBefore(next, dragEl);
+      startY += dragEl.offsetTop - old;
+    } else if (prev && visualCenter < prev.offsetTop + prev.offsetHeight / 2) {
+      const old = dragEl.offsetTop;
+      list.insertBefore(dragEl, prev);
+      startY += dragEl.offsetTop - old;
+    }
+    dragEl.style.transform = 'translateY(' + (e.clientY - startY) + 'px)';
+  }
+
+  function onUp(e) {
+    if (!dragEl) return;
+    const el = dragEl;
+    dragEl = null;
+    el.classList.remove('dragging');
+    el.style.transform = '';
+    const handle = e.currentTarget;
+    handle.removeEventListener('pointermove', onMove);
+    handle.removeEventListener('pointerup', onUp);
+    handle.removeEventListener('pointercancel', onUp);
+    const order = Array.from(list.children).map(r => r.dataset.id);
+    if (order.join('|') === lastOrder.join('|')) return;
+    send('streamlit:setComponentValue', {
+      value: { order: order, moved: el.dataset.id, nonce: Date.now() },
+      dataType: 'json'
+    });
+  }
 
   window.addEventListener('message', function (ev) {
     const d = ev.data;
     if (!d || d.type !== 'streamlit:render') return;
-    render(d.args || {});
-  });
-  window.addEventListener('resize', function () {
-    setHeight();
-    if (map && autoFit && !compact) fitAll(false);
+    if (dragEl) return; // 끄는 중에는 다시 그리지 않음
+    render((d.args && d.args.items) || []);
   });
   send('streamlit:componentReady', { apiVersion: 1 });
 })();
