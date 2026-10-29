@@ -283,6 +283,19 @@ def remove_point(rid: str, idx: int) -> None:
         del pts[idx]
 
 
+def insert_point(rid: str, after: int) -> None:
+    """검색 결과에서 고른 장소를 after번째 장소 뒤에 끼워 넣음 (after=-1이면 맨 앞)"""
+    ss = st.session_state
+    res = ss.get(f"res_{rid}") or []
+    if not res:
+        return
+    i = min(max(int(ss.get(f"pick_{rid}", 0)), 0), len(res) - 1)
+    p = res[i]
+    pts = ss.setdefault(f"pts_{rid}", [])
+    pts.insert(min(max(after + 1, 0), len(pts)),
+               {"name": p["name"], "lat": round(p["lat"], 4), "lon": round(p["lon"], 4)})
+
+
 def change_point(rid: str, idx: int) -> None:
     """검색 결과에서 고른 장소로 이 칸의 이름과 위치를 바꿈"""
     ss = st.session_state
@@ -301,17 +314,20 @@ def open_form(rid: str, rec: dict) -> None:
     pts = ss[f"pts_{rid}"]
 
     st.markdown("**📍 방문 장소 (순서대로)**")
-    if pts:
-        st.caption("장소를 바꾸려면 아래에서 검색 결과를 고른 뒤 ‘위치 변경’을 누르세요.")
-        for i, p in enumerate(pts):
-            c_n, c_c, c_d = st.columns([5, 3, 1])
-            c_n.markdown(f"{i + 1}. {p['name']}")
-            c_c.button("📍 위치 변경", key=f"chgpt_{rid}_{i}", on_click=change_point, args=(rid, i),
-                       use_container_width=True)
-            c_d.button("🗑️", key=f"delpt_{rid}_{i}", help="이 장소 삭제",
-                       on_click=remove_point, args=(rid, i))
-    else:
-        st.caption("장소가 없어요. 아래에서 검색해 추가해 주세요.")
+    st.caption("아래 검색 결과를 고른 뒤 ‘📍 위치 변경’(그 장소를 바꿈) 또는 ‘➕ 뒤에 추가’(사이에 끼움)를 누르세요.")
+    st.button("⬆️ 맨 앞에 추가", key=f"ins_top_{rid}", on_click=insert_point, args=(rid, -1),
+              use_container_width=True)
+    for i, p in enumerate(pts):
+        c_n, c_c, c_i, c_d = st.columns([4, 2.4, 2.6, 1])
+        c_n.markdown(f"{i + 1}. {p['name']}")
+        c_c.button("📍 위치 변경", key=f"chgpt_{rid}_{i}", on_click=change_point, args=(rid, i),
+                   use_container_width=True)
+        c_i.button("➕ 뒤에 추가", key=f"ins_{rid}_{i}", on_click=insert_point, args=(rid, i),
+                   use_container_width=True)
+        c_d.button("🗑️", key=f"delpt_{rid}_{i}", help="이 장소 삭제",
+                   on_click=remove_point, args=(rid, i))
+    if not pts:
+        st.caption("장소가 없어요. 위 검색 결과에서 ‘⬆️ 맨 앞에 추가’로 넣어 주세요.")
 
     with st.expander("🔎 구글 지도에서 장소 찾아 추가", expanded=True):
         st.text_input("검색어", key=f"q_{rid}", placeholder="예: 인천국제공항 제1터미널")
