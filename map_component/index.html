@@ -97,6 +97,14 @@
     if (focusMode) fitAll(true);   // 한 장소 확대 상태에서는 "−" 한 번으로 기본 축적(전체 보기)
     else map.zoomOut();
   }
+  function fitFocus(points) {   // 여러 지점이 한눈에 보이도록 이동 (기록 카드 선택)
+    busy = true;
+    map.fitBounds(points, { padding: [40, 40], maxZoom: 16, animate: true });
+    busy = false;
+    autoFit = false;
+    focusMode = true;
+    window.parent.postMessage({ type: 'trip-scroll-map' }, '*');
+  }
   function focusOn(lat, lon) {
     busy = true;
     map.flyTo([lat, lon], Math.max(map.getZoom(), 15), { duration: 0.6 });
@@ -290,7 +298,7 @@
     if (f && f.nonce && f.nonce !== lastFocus) {
       lastFocus = f.nonce;
       initialFitDone = true;
-      focusOn(f.lat, f.lon);
+      if (f.points && f.points.length > 1) fitFocus(f.points); else focusOn(f.lat, f.lon);
     } else if (!initialFitDone && (all.length || lastPlaces.length)) {
       initialFitDone = true;
       fitAll(false);
