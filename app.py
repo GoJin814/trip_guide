@@ -538,15 +538,13 @@ if isinstance(_pick, dict):
 # 대화상자 (일정 추가 / 저장·불러오기)
 # ======================================================================
 def tab_nav(current: str) -> None:
-    """페이지 제목 위 탭 메뉴. 현재 탭은 굵게 표시."""
-    cols = st.columns([1.4, 1.4, 4])
-    for col, (name, target) in zip(cols, [("여행 정보", "app.py"), ("여행 기록", "pages/records.py")]):
-        with col:
-            if name == current:
-                st.markdown(f"<div style='font-weight:800;font-size:1.05rem;color:#111827;padding-top:0.3rem;'>{name}</div>",
-                            unsafe_allow_html=True)
-            else:
-                st.page_link(target, label=name)
+    """페이지 제목 위 탭 메뉴. 현재 탭이 강조되고, 다른 탭을 누르면 이동해요."""
+    targets = {"여행 정보": "app.py", "여행 기록": "pages/records.py"}
+    with st.container(key="tabnav"):
+        pick = st.pills("페이지", list(targets), default=current, key=f"tabpills_{current}",
+                        label_visibility="collapsed")
+    if pick and pick != current:
+        st.switch_page(targets[pick])
 
 
 def append_record(rec: dict) -> bool:
@@ -588,11 +586,9 @@ def send_to_records_dialog() -> None:
     default_title = st.session_state.get("trip_title", DEFAULT_TITLE).strip() or DEFAULT_TITLE
 
     title = st.text_input("여정 제목", value=default_title, key="rec_title")
-    c_from, c_to = st.columns(2)
-    idx_from = c_from.selectbox("출발지", list(range(len(labels))), format_func=lambda i: labels[i],
-                                index=0, key="rec_from")
-    idx_to = c_to.selectbox("도착지", list(range(len(labels))), format_func=lambda i: labels[i],
-                            index=len(labels) - 1, key="rec_to")
+    idx_from, idx_to = 0, len(labels) - 1
+    st.caption(f"🛫 출발: {names[0]} · 🛬 도착: {names[-1]}  (첫 일정·마지막 일정으로 지정돼요. "
+               f"아래 장소는 모두 지도에 저장돼요.)")
     c_s, c_e = st.columns(2)
     d_start = c_s.date_input("출발일", value=start0, key="rec_start")
     d_end = c_e.date_input("도착일", value=start0 + timedelta(days=max_day - 1), key="rec_end")
@@ -612,6 +608,7 @@ def send_to_records_dialog() -> None:
             "trip_title": title.strip() or DEFAULT_TITLE,
             "from_name": names[idx_from], "from_lat": a["lat"], "from_lon": a["lon"],
             "to_name": names[idx_to], "to_lat": b["lat"], "to_lon": b["lon"],
+            "points": [{"name": n, "lat": s["lat"], "lon": s["lon"]} for n, s in zip(names, spots_now)],
             "start": d_start.isoformat(), "end": d_end.isoformat(),
             "country": country.strip() or "대한민국",
             "memo": memo.strip(),
