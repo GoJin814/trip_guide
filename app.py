@@ -9,84 +9,67 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# 모바일 화면 공간 최적화 CSS
+# 모바일/태블릿 최적화 초경량 슬림 스타일
 CSS = """
 <style>
     .block-container {padding: 1rem 0.6rem 2rem 0.6rem !important;}
-    
-    /* 체크박스 기본 여백 축소 */
+    .stCheckbox label {font-size: 0.92rem !important; font-weight: 700 !important; cursor: pointer; color: #111827;}
     .stCheckbox {margin-bottom: 0 !important;}
-    .stCheckbox label {font-size: 0.95rem !important; font-weight: 700 !important; cursor: pointer; color: #111827;}
-    
-    /* 배지 및 Day 인라인 디자인 */
-    .badge-inline {
-        display: inline-flex;
-        align-items: center;
-        margin-top: 3px;
-        white-space: nowrap;
-    }
-    .badge {
-        display: inline-block;
-        padding: 0.15rem 0.45rem;
-        border-radius: 9999px;
-        font-size: 0.72rem;
-        font-weight: 700;
-        margin-right: 0.3rem;
-    }
-    .done {background:#DCFCE7; color:#15803D;}
-    .yet  {background:#F1F5F9; color:#64748B;}
-    .day-txt {font-size: 0.78rem; color:#64748B; font-weight: 600;}
-    
-    .tip-txt {
-        font-size: 0.8rem;
-        color: #4B5563;
-        margin-top: 4px;
-        padding-left: 2px;
-        line-height: 1.3;
-    }
-    
-    /* 카드 컨테이너 내부 여백 슬림화 */
+    .tip-text {font-size: 0.78rem; color:#4B5563; line-height: 1.3; padding-left: 2px;}
     div[data-testid="stVerticalBlockBorderWrapper"] {
         padding: 0.6rem 0.75rem !important;
-        margin-bottom: 0.45rem !important;
+        margin-bottom: 0.4rem !important;
         border-radius: 10px !important;
     }
 
-    /* 우측 상단 수정 버튼 슬림화 */
-    div[data-testid="stColumn"]:has(button[key*="btn_edit_"]) button {
-        padding: 0.15rem 0.3rem !important;
-        height: auto !important;
-        min-height: 28px !important;
-        border: none !important;
-        background: transparent !important;
-        font-size: 1.05rem !important;
+    /* ---- 일정 카드 내부: 모바일에서도 가로 배치 유지 + 간격 축소 ---- */
+    [class*="st-key-card_"] [data-testid="stVerticalBlock"] {gap: 0.3rem !important;}
+    [class*="st-key-card_"] [data-testid="stHorizontalBlock"] {
+        flex-direction: row !important; flex-wrap: nowrap !important;
+        gap: 0.4rem !important; align-items: flex-start !important;
+    }
+    [class*="st-key-card_"] [data-testid="stColumn"],
+    [class*="st-key-card_"] [data-testid="column"] {min-width: 0 !important;}
+
+    /* 헤더 줄: 왼쪽(체크박스+배지) 가변, 오른쪽 수정 버튼 고정폭 */
+    [class*="st-key-hdr_"] [data-testid="stColumn"]:first-child,
+    [class*="st-key-hdr_"] [data-testid="column"]:first-child {flex: 1 1 0 !important; width: auto !important;}
+    [class*="st-key-hdr_"] [data-testid="stColumn"]:last-child,
+    [class*="st-key-hdr_"] [data-testid="column"]:last-child {flex: 0 0 2.2rem !important; width: 2.2rem !important;}
+
+    /* 우측 상단 수정 아이콘 버튼 */
+    [class*="st-key-btn_edit_"] button {
+        min-height: 1.9rem !important; height: 1.9rem !important; width: 100% !important;
+        padding: 0 !important; border: none !important; background: transparent !important;
     }
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
 
-# 여행 코스 데이터 초기화
+# 기본 여행 코스 데이터 초기화 (장소명, 시간 분리)
 DEFAULT_SPOTS = [
-    dict(id="legoland", day=1, name="1. 레고랜드 코리아", category="종일",
+    dict(id="legoland", day=1, name="1. 레고랜드 코리아", time="종일",
          lat=37.8845, lon=127.6975, desc="하중도 위치 테마파크 탐방",
          tip="오전 인기 어트랙션 집중 공략"),
-    dict(id="soyang_dam", day=2, name="2. 소양호 유람선터미널", category="09:30~10:00",
+    dict(id="soyang_dam", day=2, name="2. 소양호 유람선터미널", time="09:30~10:00",
          lat=37.9547, lon=127.8184, desc="청평사행 도선 승선 (편도 15분)",
          tip="댐 정상 주차장 09:30 전 도착 권장"),
-    dict(id="cheongpyeongsa", day=2, name="3. 청평사 경내", category="10:15~11:45",
+    dict(id="cheongpyeongsa", day=2, name="3. 청평사 경내", time="10:15~11:45",
          lat=37.9877, lon=127.8136, desc="구성폭포 및 오봉산 산책로 관람",
          tip="선착장 ↔ 절 왕복 약 1시간 도보"),
-    dict(id="sambath", day=2, name="4. 샘밭막국수", category="12:30~13:30",
+    dict(id="sambath", day=2, name="4. 샘밭막국수", time="12:30~13:30",
          lat=37.9317, lon=127.7656, desc="담백한 전통 메밀막국수 & 편육",
          tip="소양강댐에서 차로 5분 거리 위치"),
-    dict(id="cablecar", day=2, name="5. 삼악산 호수케이블카", category="14:00~15:30",
+    dict(id="cablecar", day=2, name="5. 삼악산 호수케이블카", time="14:00~15:30",
          lat=37.8548, lon=127.6970, desc="국내 최장 3.61km 케이블카 & 의암호 전망",
          tip="의암호 정차장에서 서울/수도권 복귀 직결"),
 ]
 
+# 세션 상태 관리
 if "spots_data" not in st.session_state:
     st.session_state.spots_data = DEFAULT_SPOTS
 
+# 수정 모드 플래그 딕셔너리
 if "editing_flags" not in st.session_state:
     st.session_state.editing_flags = {}
 
@@ -309,7 +292,7 @@ MAP_TEMPLATE = """
 def render_embedded_google_map(spots, done_states: list[bool]) -> None:
     data = [
         {
-            "name": s["name"],
+            "name": f"{s['name']} ({s.get('time', '')})" if s.get("time") else s["name"],
             "lat": s["lat"],
             "lon": s["lon"],
             "desc": s.get("desc", ""),
@@ -320,97 +303,107 @@ def render_embedded_google_map(spots, done_states: list[bool]) -> None:
     ]
     spots_json = json.dumps(data, ensure_ascii=False)
     final_html = MAP_TEMPLATE.replace("__SPOTS_JSON__", spots_json)
-    components.html(final_html, height=450)
+    components.html(final_html, height=470)
 
 # ---------- 화면 레이아웃 ----------
 st.title("🚗 춘천 실시간 여행 트래커")
+
+col_map, col_ctrl = st.columns([1.1, 1.2])
 
 spots = st.session_state.spots_data
 done_flags = [st.session_state.get(f"chk_{s['id']}", False) for s in spots]
 n_done = sum(done_flags)
 
-# 지도 상단 배치
-total_spots = len(spots) if len(spots) > 0 else 1
-st.progress(n_done / total_spots,
-            text=f"진행률: {n_done} / {len(spots)} 코스 완료 ({n_done * 100 // total_spots}%)")
-render_embedded_google_map(spots, done_flags)
-
-# 상단 액션 바
-act_c1, act_c2 = st.columns([1, 1.2])
-with act_c1:
-    st.button("✅ 전체완료", on_click=set_all, args=(True,), use_container_width=True)
-with act_c2:
-    with st.popover("➕ 새 일정 추가", use_container_width=True):
-        st.markdown("##### 📍 새 장소 등록")
-        new_name = st.text_input("장소명", placeholder="예: 구봉산 카페거리")
-        new_day = st.selectbox("일차", [1, 2], index=1)
-        new_tip = st.text_input("메모/팁", placeholder="예: 전망 좋은 베이커리")
-        new_lat = st.number_input("위도(Lat)", value=37.8870, format="%.4f")
-        new_lon = st.number_input("경도(Lon)", value=127.7650, format="%.4f")
-        
-        if st.button("추가하기", use_container_width=True):
-            if new_name:
-                new_id = f"custom_{len(spots)+1}"
-                st.session_state.spots_data.append(dict(
-                    id=new_id, day=new_day, name=f"{len(spots)+1}. {new_name}",
-                    category="", lat=new_lat, lon=new_lon,
-                    desc="사용자 등록 장소", tip=new_tip
-                ))
-                st.session_state[f"chk_{new_id}"] = False
-                st.session_state.editing_flags[new_id] = False
-                st.rerun()
-
-st.write("")
-
-# 일정 카드 렌더링
-for idx, spot in enumerate(spots):
-    sid = spot["id"]
-    key = f"chk_{sid}"
-    checked = st.session_state.get(key, False)
-    is_editing = st.session_state.editing_flags.get(sid, False)
+# [우측 컨트롤러 영역]
+with col_ctrl:
+    # 상단 액션 바
+    top_c1, top_c2, top_c3 = st.columns([1, 1, 1.2])
+    top_c1.button("🔄 초기화", on_click=set_all, args=(False,), use_container_width=True)
+    top_c2.button("✅ 전체완료", on_click=set_all, args=(True,), use_container_width=True)
     
-    with st.container(border=True):
-        # 1. 수정 모드일 때
-        if is_editing:
-            st.markdown("**✏️ 일정 내용 수정**")
-            edit_name = st.text_input("장소명", value=spot["name"], key=f"inp_name_{sid}")
-            edit_day = st.selectbox("일차 (Day)", [1, 2], index=0 if spot.get("day", 1) == 1 else 1, key=f"inp_day_{sid}")
-            edit_tip = st.text_input("메모/팁", value=spot.get("tip", ""), key=f"inp_tip_{sid}")
+    with top_c3:
+        with st.popover("➕ 새 일정 추가", use_container_width=True):
+            st.markdown("##### 📍 새 장소 등록")
+            new_name = st.text_input("장소명", placeholder="예: 구봉산 카페거리")
+            new_time = st.text_input("시간", placeholder="예: 16:00~17:30")
+            new_day = st.selectbox("일차", [1, 2], index=1)
+            new_tip = st.text_input("메모/팁", placeholder="예: 소양강 조망 카페")
+            new_lat = st.number_input("위도(Lat)", value=37.8870, format="%.4f")
+            new_lon = st.number_input("경도(Lon)", value=127.7650, format="%.4f")
             
-            b_save, b_cancel = st.columns(2)
-            if b_save.button("저장", key=f"save_{sid}", use_container_width=True):
-                st.session_state.spots_data[idx]["name"] = edit_name
-                st.session_state.spots_data[idx]["day"] = edit_day
-                st.session_state.spots_data[idx]["tip"] = edit_tip
-                st.session_state.editing_flags[sid] = False
-                st.rerun()
-            if b_cancel.button("취소", key=f"cancel_{sid}", use_container_width=True):
-                st.session_state.editing_flags[sid] = False
-                st.rerun()
-
-        # 2. 보기 모드일 때
-        else:
-            # 헤더 줄: [체크박스] + [장소명] | [대기/완료 + Day N] | [우측 상단 ✏️]
-            c_chk, c_badge, c_edit = st.columns([4.2, 2.2, 0.8])
-            
-            with c_chk:
-                st.checkbox(spot["name"], key=key)
-            
-            with c_badge:
-                badge_class = "done" if checked else "yet"
-                badge_label = "완료" if checked else "대기"
-                st.markdown(
-                    f'<div class="badge-inline">'
-                    f'<span class="badge {badge_class}">{badge_label}</span>'
-                    f'<span class="day-txt">Day {spot["day"]}</span>'
-                    f'</div>',
-                    unsafe_allow_html=True
-                )
-                
-            with c_edit:
-                if st.button("✏️", key=f"btn_edit_{sid}", help="일정 수정"):
-                    st.session_state.editing_flags[sid] = True
+            if st.button("추가하기", use_container_width=True):
+                if new_name:
+                    new_id = f"custom_{len(spots)+1}"
+                    st.session_state.spots_data.append(dict(
+                        id=new_id, day=new_day, name=f"{len(spots)+1}. {new_name}",
+                        time=new_time, lat=new_lat, lon=new_lon,
+                        desc="사용자 등록 장소", tip=new_tip
+                    ))
+                    st.session_state[f"chk_{new_id}"] = False
+                    st.session_state.editing_flags[new_id] = False
                     st.rerun()
-            
-            # 아래 줄: 팁/설명
-            st.markdown(f'<div class="tip-txt">💡 {spot["tip"]}</div>', unsafe_allow_html=True)
+
+    st.write("")
+
+    # 카드 렌더링 함수 (보기 모드 / 수정 모드 전환)
+    def render_card(spot, idx):
+        sid = spot["id"]
+        key = f"chk_{sid}"
+        checked = st.session_state.get(key, False)
+        is_editing = st.session_state.editing_flags.get(sid, False)
+
+        with st.container(border=True, key=f"card_{sid}"):
+            # 1. 수정 모드일 때 (In-place 수정 폼)
+            if is_editing:
+                st.markdown("**✏️ 일정 정보 수정**")
+                edit_name = st.text_input("장소명", value=spot["name"], key=f"inp_name_{sid}")
+                edit_time = st.text_input("시간", value=spot.get("time", ""), key=f"inp_time_{sid}")
+                edit_day = st.selectbox("일차 (Day)", [1, 2], index=0 if spot.get("day", 1) == 1 else 1, key=f"inp_day_{sid}")
+                edit_tip = st.text_input("메모/팁", value=spot.get("tip", ""), key=f"inp_tip_{sid}")
+
+                b_save, b_cancel = st.columns(2)
+                if b_save.button("저장", key=f"save_{sid}", use_container_width=True):
+                    st.session_state.spots_data[idx]["name"] = edit_name
+                    st.session_state.spots_data[idx]["time"] = edit_time
+                    st.session_state.spots_data[idx]["day"] = edit_day
+                    st.session_state.spots_data[idx]["tip"] = edit_tip
+                    st.session_state.editing_flags[sid] = False
+                    st.rerun()
+                if b_cancel.button("취소", key=f"cancel_{sid}", use_container_width=True):
+                    st.session_state.editing_flags[sid] = False
+                    st.rerun()
+
+            # 2. 일반 보기 모드일 때
+            else:
+                time_str = f" ({spot['time']})" if spot.get("time") else ""
+                status = ":green-badge[완료]" if checked else ":gray-badge[대기]"
+                # 장소명(시간) 바로 오른쪽에 상태 배지 + Day를 연속 표시
+                label = f"{spot['name']}{time_str} {status} :gray[Day {spot['day']}]"
+
+                # 헤더 줄: [체크박스 + 배지 + Day] ........ [✏️ 우측 상단]
+                with st.container(key=f"hdr_{sid}"):
+                    c_content, c_btn = st.columns([6, 1])
+                    with c_content:
+                        st.checkbox(label, key=key)
+                    with c_btn:
+                        if st.button("✏️", key=f"btn_edit_{sid}", help="일정 수정"):
+                            st.session_state.editing_flags[sid] = True
+                            st.rerun()
+
+                st.markdown(f'<div class="tip-text">💡 {spot["tip"]}</div>', unsafe_allow_html=True)
+
+    # 2열 그리드로 나란히 배치
+    for i in range(0, len(spots), 2):
+        row_c1, row_c2 = st.columns(2)
+        with row_c1:
+            render_card(spots[i], i)
+        if i + 1 < len(spots):
+            with row_c2:
+                render_card(spots[i + 1], i + 1)
+
+# [좌측 지도 영역]
+with col_map:
+    total_spots = len(spots) if len(spots) > 0 else 1
+    st.progress(n_done / total_spots,
+                text=f"진행률: {n_done} / {len(spots)} 코스 완료 ({n_done * 100 // total_spots}%)")
+    render_embedded_google_map(spots, done_flags)
