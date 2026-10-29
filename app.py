@@ -373,6 +373,7 @@ def use_place() -> None:
 # Firebase 실시간 연동 (REST API)
 # ======================================================================
 SHARED_PATH = "trips/shared"
+RECORD_PATH = "trips/records"
 
 
 def db_base_url() -> str:
@@ -537,6 +538,92 @@ if isinstance(_pick, dict):
 # 대화상자 (일정 추가 / 저장·불러오기)
 # ======================================================================
 @st.dialog("➕ 새 장소 추가")
+def tab_nav(current: str) -> None:
+    """페이지 제목 위 탭 메뉴. 현재 탭은 굵게 표시."""
+    cols = st.columns([1.4, 1.4, 4])
+    for col, (name, target) in zip(cols, [("여행 정보", "app.py"), ("여행 기록", "pages/records.py")]):
+        with col:
+            if name == current:
+                st.markdown(f"<div style='font-weight:800;font-size:1.05rem;color:#111827;padding-top:0.3rem;'>{name}</div>",
+                            unsafe_allow_html=True)
+            else:
+                st.page_link(target, label=name)
+
+
+def append_record(rec: dict) -> bool:
+    """여행 기록 목록 끝에 한 건 추가 (Firebase)"""
+    base = db_base_url()
+    if not base:
+        return False
+    url = f"{base}/{RECORD_PATH}.json"
+    try:
+        with urllib.request.urlopen(url, timeout=5) as r:
+            data = json.loads(r.read().decode("utf-8"))
+    except Exception:
+        return False
+    old = data.get("records") if isinstance(data, dict) else None
+    recs = [x for x in (old if isinstance(old, list) else []) if isinstance(x, dict) and x.get("id")]
+    recs.append(rec)
+    payload = {"version": 1, "saved_at": datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d %H:%M"),
+               "records": recs}
+    req = urllib.request.Request(url, data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                                 method="PUT", headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=5):
+            return True
+    except Exception:
+        return False
+
+
+@st.dialog("📖 여행 기록으로 넘기기")
+def send_to_records_dialog() -> None:
+    spots_now = st.session_state.spots_data
+    if not spots_now:
+        st.info("넘길 일정이 없어요.")
+        return
+    names = [re.sub(r"^\d+\.\s*", "", s["name"]) for s in spots_now]
+    labels = [f"Day {s['day']} · {n}" for s, n in zip(spots_now, names)]
+    days = sorted({int(s["day"]) for s in spots_now})
+    max_day = max(days)
+    start0 = st.session_state.get("trip_start_input") or date.today()
+    default_title = st.session_state.get("trip_title", DEFAULT_TITLE).strip() or DEFAULT_TITLE
+
+    title = st.text_input("여정 제목", value=default_title, key="rec_title")
+    c_from, c_to = st.columns(2)
+    idx_from = c_from.selectbox("출발지", list(range(len(labels))), format_func=lambda i: labels[i],
+                                index=0, key="rec_from")
+    idx_to = c_to.selectbox("도착지", list(range(len(labels))), format_func=lambda i: labels[i],
+                            index=len(labels) - 1, key="rec_to")
+    c_s, c_e = st.columns(2)
+    d_start = c_s.date_input("출발일", value=start0, key="rec_start")
+    d_end = c_e.date_input("도착일", value=start0 + timedelta(days=max_day - 1), key="rec_end")
+    country = st.text_input("나라", value="대한민국", key="rec_country")
+    memo_default = "\n".join(
+        f"Day {d}: " + " → ".join(names[i] for i, s in enumerate(spots_now) if int(s["day"]) == d)
+        for d in days)
+    memo = st.text_area("메모", value=memo_default, height=120, key="rec_memo")
+
+    if st.button("기록으로 넘기기", type="primary", use_container_width=True, key="rec_submit"):
+        if d_end < d_start:
+            st.error("도착일은 출발일보다 빠를 수 없어요.")
+            return
+        a, b = spots_now[idx_from], spots_now[idx_to]
+        rec = {
+            "id": uuid4().hex,
+            "trip_title": title.strip() or DEFAULT_TITLE,
+            "from_name": names[idx_from], "from_lat": a["lat"], "from_lon": a["lon"],
+            "to_name": names[idx_to], "to_lat": b["lat"], "to_lon": b["lon"],
+            "start": d_start.isoformat(), "end": d_end.isoformat(),
+            "country": country.strip() or "대한민국",
+            "memo": memo.strip(),
+        }
+        if append_record(rec):
+            st.session_state.msg = "여행 기록으로 넘겼어요 📖"
+            st.rerun()
+        else:
+            st.error("기록 저장에 실패했어요. 잠시 후 다시 시도해 주세요.")
+
+
 def add_spot_dialog() -> None:
     ss = st.session_state
     st.caption("💡 지도를 누르면 그 위치 좌표가 자동 입력돼요.")
@@ -674,9 +761,9 @@ sync_poll()
 # 화면
 # ======================================================================
 _title = st.session_state.get("trip_title", DEFAULT_TITLE).strip() or DEFAULT_TITLE
-st.markdown(f"<div style='font-size: 1.6rem; font-weight: 800; padding-bottom: 0.3rem;'> {_title}</div>",
+tab_nav("여행 정보")
+st.markdown(f"<div style='font-size: 1.6rem; font-weight: 800; padding-bottom: 0.3rem;'>🚞 {_title}</div>",
             unsafe_allow_html=True)
-st.page_link("pages/records.py", label="📖 여행 기록 페이지로")
 
 if st.session_state.get("msg"):
     st.toast(st.session_state.pop("msg"))
@@ -798,6 +885,9 @@ with col_ctrl:
         if i + 1 < len(spots):
             with row_c2:
                 render_card(spots[i + 1])
+    st.markdown('<div style="height:0.5rem;"></div>', unsafe_allow_html=True)
+    if st.button("📖 여행 기록으로 넘기기", key="send_to_records", use_container_width=True):
+        send_to_records_dialog()
 
 with col_map:
 
