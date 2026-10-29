@@ -1,4 +1,5 @@
 import copy
+import html
 import json
 import re
 from datetime import datetime
@@ -161,11 +162,17 @@ CSS = """
     [class*="st-key-card_"] [data-testid="stColumn"],
     [class*="st-key-card_"] [data-testid="column"] {min-width: 0 !important;}
 
-    /* 헤더 줄: 왼쪽(체크박스) 가변, 오른쪽 수정·삭제 버튼 고정폭 */
-    [class*="st-key-hdr_"] [data-testid="stColumn"]:first-child,
-    [class*="st-key-hdr_"] [data-testid="column"]:first-child {flex: 1 1 0 !important; width: auto !important;}
-    [class*="st-key-hdr_"] [data-testid="stColumn"]:not(:first-child),
-    [class*="st-key-hdr_"] [data-testid="column"]:not(:first-child) {flex: 0 0 2.2rem !important; width: 2.2rem !important;}
+    /* 헤더 줄: [체크박스 고정] [장소명(링크) 가변] [✏️][🗑️] 고정폭 */
+    [class*="st-key-hdr_"] [data-testid="stColumn"]:nth-child(1),
+    [class*="st-key-hdr_"] [data-testid="column"]:nth-child(1) {flex: 0 0 1.6rem !important; width: 1.6rem !important;}
+    [class*="st-key-hdr_"] [data-testid="stColumn"]:nth-child(2),
+    [class*="st-key-hdr_"] [data-testid="column"]:nth-child(2) {flex: 1 1 0 !important; width: auto !important;}
+    [class*="st-key-hdr_"] [data-testid="stColumn"]:nth-child(n+3),
+    [class*="st-key-hdr_"] [data-testid="column"]:nth-child(n+3) {flex: 0 0 2.2rem !important; width: 2.2rem !important;}
+
+    /* 장소명 링크 (네이버 검색) */
+    a.spot-name {color: #1E3A8A; font-weight: 700; font-size: 0.92rem; text-decoration: underline;
+                 text-underline-offset: 2px; line-height: 1.5; display: inline-block; margin-top: 0.35rem;}
 
     /* 수정(✏️) · 삭제(🗑️) 아이콘 버튼 */
     [class*="st-key-btn_edit_"] button, [class*="st-key-btn_del_"] button {
@@ -179,6 +186,9 @@ CSS = """
     }
     .st-key-topbar [data-testid="stColumn"], .st-key-topbar [data-testid="column"] {min-width: 0 !important;}
     .st-key-topbar button {padding-left: 0.3rem !important; padding-right: 0.3rem !important; white-space: nowrap;}
+
+    /* 여행 제목 */
+    .trip-title {font-size: 1.3rem; font-weight: 800; line-height: 1.3; margin: 0 0 0.5rem 0; color: #111827;}
 
     /* 지도: 정사각형 비율 */
     .st-key-mapbox iframe {width: 100% !important; height: auto !important; aspect-ratio: 1 / 1;}
@@ -460,7 +470,10 @@ def render_embedded_google_map(spots, done_states: list[bool]) -> None:
 
 
 # ---------- 화면 레이아웃 ----------
-st.title(f"🚗 {st.session_state.get('trip_title', DEFAULT_TITLE).strip() or DEFAULT_TITLE}")
+st.markdown(
+    f'<div class="trip-title">{html.escape(st.session_state.get("trip_title", DEFAULT_TITLE).strip() or DEFAULT_TITLE)}</div>',
+    unsafe_allow_html=True,
+)
 
 if st.session_state.get("msg"):
     st.toast(st.session_state.pop("msg"))
@@ -516,10 +529,18 @@ with col_ctrl:
             # 2. 보기 모드
             else:
                 # 헤더: [체크박스(장소명)] ..... [✏️] [🗑️]
+                q = quote(re.sub(r"^\d+\.\s*", "", spot["name"]))
+                naver_url = f"https://search.naver.com/search.naver?query={q}"
                 with st.container(key=f"hdr_{sid}"):
-                    c_name, c_edit, c_del = st.columns([6, 1, 1])
+                    c_chk, c_name, c_edit, c_del = st.columns([1, 7, 1, 1])
+                    with c_chk:
+                        st.checkbox(spot["name"], key=key, label_visibility="collapsed")
                     with c_name:
-                        st.checkbox(spot["name"], key=key)
+                        st.markdown(
+                            f'<a class="spot-name" href="{naver_url}" target="_blank" rel="noopener">'
+                            f'{html.escape(spot["name"])}</a>',
+                            unsafe_allow_html=True,
+                        )
                     with c_edit:
                         if st.button("✏️", key=f"btn_edit_{sid}", help="일정 수정"):
                             st.session_state.editing_flags[sid] = True
@@ -534,18 +555,17 @@ with col_ctrl:
                 # 2줄째: 시간 · 대기/완료 · Day
                 time_part = f"⏱ {spot['time']} &nbsp;" if spot.get("time") else ""
                 badge = ('<span style="background:#DCFCE7;color:#15803D;padding:1px 7px;'
-                         'border-radius:9999px;font-weight:700;">완료</span>' if checked else
-                         '<span style="background:#F1F5F9;color:#64748B;padding:1px 7px;'
-                         'border-radius:9999px;font-weight:700;">대기</span>')
+                         'border-radius:9999px;font-weight:700;">🛂 여행 완료</span>' if checked else
+                         '<span style="background:#E0F2FE;color:#0369A1;padding:1px 7px;'
+                         'border-radius:9999px;font-weight:700;">🗺️ 여행 전</span>')
                 st.markdown(
                     f'<div style="font-size:0.8rem;color:#374151;margin:-4px 0 0 2px;">'
                     f'{time_part}{badge} &nbsp;<b style="color:#6B7280;">Day {spot["day"]}</b></div>',
                     unsafe_allow_html=True,
                 )
 
-                # 3줄째: 팁 · 네이버 검색 링크
-                q = quote(re.sub(r"^\d+\.\s*", "", spot["name"]))
-                st.caption(f"💡 {spot['tip']} · [🔍 네이버 검색](https://search.naver.com/search.naver?query={q})")
+                # 3줄째: 팁
+                st.caption(f"💡 {spot['tip']}")
 
     # 2열 그리드로 나란히 배치
     for i in range(0, len(spots), 2):
