@@ -56,6 +56,7 @@ PTR_JS = """
     var doc = top.document;
     var startY = null, armed = false;
     function atTop() {
+      if (doc.querySelector('[role="dialog"]')) return false; // 대화상자 안에서의 스크롤은 제외
       var els = [doc.scrollingElement, doc.body,
         doc.querySelector('[data-testid="stAppViewContainer"]'),
         doc.querySelector('[data-testid="stMain"]'),
@@ -301,7 +302,6 @@ def use_place() -> None:
     ss.pick_lat = round(p["lat"], 4)
     ss.pick_lon = round(p["lon"], 4)
     ss.pick_key = uuid4().hex  # 좌표 입력칸을 새 값으로 다시 그리기 위한 키
-    ss.pick_info = (ss.pick_lat, ss.pick_lon)
 
 
 # ======================================================================
@@ -420,6 +420,11 @@ CSS = """
     /* 지도 iframe: 세로 스와이프는 브라우저(페이지 스크롤/당겨서 새로고침)에 넘김 */
     .st-key-mapbox iframe {touch-action: pan-y !important;}
     .st-key-progress_wrap {margin-top: 0.5rem !important;}
+    /* 여행 시작일 + 일정 보기: 한 줄 고정 */
+    .st-key-daybar [data-testid="stHorizontalBlock"] {flex-direction: row !important; flex-wrap: nowrap !important; gap: 0.4rem !important;}
+    .st-key-daybar [data-testid="stColumn"], .st-key-daybar [data-testid="column"] {min-width: 0 !important;}
+    .st-key-daybar [data-testid="stWidgetLabel"] {display: none !important;}
+    .st-key-daybar div[data-baseweb="select"] > div, .st-key-daybar input {min-height: 2rem !important; font-size: 0.85rem !important;}
 </style>
 """
 st.markdown(CSS + day_color_css(), unsafe_allow_html=True)
@@ -440,7 +445,6 @@ if isinstance(_pick, dict):
         st.session_state.pick_lat = round(float(_pick["lat"]), 4)
         st.session_state.pick_lon = round(float(_pick["lon"]), 4)
         st.session_state.pick_key = uuid4().hex
-        st.session_state.pick_info = (st.session_state.pick_lat, st.session_state.pick_lon)
 
 
 # ======================================================================
@@ -459,6 +463,10 @@ def add_spot_dialog() -> None:
         if results:
             st.radio("검색 결과", options=list(range(len(results))),
                      format_func=lambda i: f"{results[i]['name']} · {results[i]['addr']}", key="place_pick")
+            MAP_COMPONENT(spots=[], compact=True,
+                          places=[{"name": r["name"], "addr": r["addr"], "lat": r["lat"], "lon": r["lon"]}
+                                  for r in results],
+                          selected=int(ss.get("place_pick", 0)), key="place_map", default=None)
             st.button("이 장소로 채우기", on_click=use_place, use_container_width=True)
 
     st.markdown("##### 📍 장소 정보")
@@ -550,16 +558,19 @@ if st.session_state.get("msg"):
     st.toast(st.session_state.pop("msg"))
 
 # ---- 여행 시작일 + 일차 목록 (타이틀 밑) ----
-st.date_input("📅 여행 시작일", key="trip_start_input")
-
 all_spots = st.session_state.spots_data
 _days = sorted({int(s["day"]) for s in all_spots})
 _day_opts = [0] + _days  # 0 = 전체
 if st.session_state.get("day_filter") not in _day_opts:
     st.session_state.day_filter = 0
-sel_day = st.radio("일정 보기", _day_opts,
-                   format_func=lambda d: "전체" if d == 0 else day_label(d),
-                   horizontal=True, key="day_filter", label_visibility="collapsed")
+with st.container(key="daybar"):
+    d_c1, d_c2 = st.columns([1, 1])
+    with d_c1:
+        st.date_input("여행 시작일", key="trip_start_input", label_visibility="collapsed")
+    with d_c2:
+        sel_day = st.selectbox("일정 보기", _day_opts,
+                               format_func=lambda d: "전체" if d == 0 else day_label(d),
+                               key="day_filter", label_visibility="collapsed")
 
 spots = [s for s in all_spots if sel_day == 0 or int(s["day"]) == sel_day]
 done_flags = [st.session_state.done.get(s["id"], False) for s in spots]
@@ -659,11 +670,7 @@ with col_ctrl:
                 render_card(spots[i + 1])
 
 with col_map:
-    if st.session_state.get("pick_info"):
-        _la, _lo = st.session_state.pick_info
-        st.info(f"📍 선택한 위치 ({_la}, {_lo})는 ‘➕ 일정 추가’에 입력돼 있어요.")
-    else:
-        st.caption("💡 지도 하단 ‘➕ 일정 추가’와 ‘💾 저장/불러오기’ 버튼을 사용할 수 있어요.")
+    st.caption("💡 지도 하단 ‘➕ 일정 추가’와 ‘💾 저장/불러오기’ 버튼을 사용할 수 있어요.")
 
     map_data = [
         {"name": f"{s['name']} ({s.get('time', '')})" if s.get("time") else s["name"],
