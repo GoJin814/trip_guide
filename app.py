@@ -387,7 +387,7 @@ st.set_page_config(
 # ======================================================================
 CSS = """
 <style>
-    .block-container {padding: 1.0rem 0.6rem 2rem 0.6rem !important;}
+    .block-container {padding: 1.5rem 0.6rem 2rem 0.6rem !important;}
     /* 당겨서 새로고침 방해 요소 제거: 모든 스크롤 영역의 overscroll을 기본값(auto)으로 */
     *, *::before, *::after {overscroll-behavior-y: auto !important;}
     .stCheckbox label {font-size: 0.92rem !important; font-weight: 700 !important; cursor: pointer; color: #111827;}
@@ -568,11 +568,11 @@ if st.session_state.get("day_filter") not in _day_opts:
     st.session_state.day_filter = 0
 sel_day = st.session_state.day_filter
 _max_day = max((int(s["day"]) for s in all_spots), default=1)
-_trip_len = f"({_max_day - 1}박 {_max_day}일)"
+_trip_len = f"({_max_day - 1}박 {_max_day}일)  "
 _row_style = ("height:2.4rem;display:flex;align-items:center;font-size:0.9rem;"
               "font-weight:700;color:#374151;white-space:nowrap;")
 with st.container(key="daybar"):
-    d_sp, d_lbl, d_date, d_len = st.columns([3, 1.1, 2.8, 1.1])
+    d_sp, d_lbl, d_date, d_len = st.columns([3, 1.1, 2.7, 1.1])
     with d_lbl:
         st.markdown(f'<div style="{_row_style}justify-content:flex-end;">여행 시작:</div>',
                     unsafe_allow_html=True)
