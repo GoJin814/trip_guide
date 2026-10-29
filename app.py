@@ -170,6 +170,9 @@ CSS = """
     [class*="st-key-hdr_"] [data-testid="column"]:nth-child(2) {flex: 1 1 0 !important; width: auto !important;}
     [class*="st-key-hdr_"] [data-testid="stColumn"]:nth-child(n+3),
     [class*="st-key-hdr_"] [data-testid="column"]:nth-child(n+3) {flex: 0 0 1.2rem !important; width: 1.2rem !important;}
+    /* 수정(✏️)과 삭제(🗑️) 사이 간격 */
+    [class*="st-key-hdr_"] [data-testid="stColumn"]:nth-child(4),
+    [class*="st-key-hdr_"] [data-testid="column"]:nth-child(4) {margin-left: 0.65rem !important;}
 
     /* 삭제 팝오버 버튼: 화살표 아이콘 제거, 이모지 가운데 정렬 */
     [class*="st-key-btn_del_"] button svg,
@@ -194,10 +197,11 @@ CSS = """
     .st-key-topbar button {padding-left: 0.3rem !important; padding-right: 0.3rem !important; white-space: nowrap;}
 
     /* 여행 제목 */
-    .trip-title {font-size: 1.3rem; font-weight: 800; line-height: 1.3; margin: 0 0 0.5rem 0; color: #111827;}
+    .st-key-trip_title h1 {font-size: 1.2rem !important; font-weight: 800 !important; line-height: 1.3 !important;
+                           margin: 0.2rem 0 0.5rem 0 !important; padding: 0 !important; color: #111827 !important;}
 
     /* 지도: 정사각형 비율 */
-    .st-key-mapbox {margin-bottom: 0.6rem !important;}
+    .st-key-mapbox {margin-bottom: 0 !important;}
     .st-key-mapbox iframe {width: 100% !important; aspect-ratio: 1 / 1;}
 </style>
 """
@@ -392,7 +396,7 @@ MAP_TEMPLATE = """
                     '<b style="font-size:13px;color:#1E3A8A;">' + esc(spot.name) + '</b><br>' +
                     statusText +
                     '<p style="margin:4px 0;font-size:11px;color:#334155;">' + esc(spot.desc) + '</p>' +
-                    '<div style="background:#FEF3C7;color:#B45309;padding:2px 5px;border-radius:4px;font-size:10px;">' +
+                    '<div style="background:#FEF3C7;color:#B45309;padding:2px 5px;border-radius:4px;font-size:10px;white-space:pre-line;">' +
                         '💡 ' + esc(spot.tip) +
                     '</div>' +
                 '</div>';
@@ -494,12 +498,9 @@ def render_embedded_google_map(spots, done_states: list[bool]) -> None:
 
 
 # ---------- 화면 레이아웃 ----------
-_title = html.escape(st.session_state.get("trip_title", DEFAULT_TITLE).strip() or DEFAULT_TITLE)
-st.markdown(
-    f'<div style="font-size:1.2rem;font-weight:800;line-height:1.3;'
-    f'margin:0.2rem 0 0.6rem 0;color:#111827;">{_title}</div>',
-    unsafe_allow_html=True,
-)
+_title = st.session_state.get("trip_title", DEFAULT_TITLE).strip() or DEFAULT_TITLE
+with st.container(key="trip_title"):
+    st.title(_title)
 
 if st.session_state.get("msg"):
     st.toast(st.session_state.pop("msg"))
@@ -535,7 +536,8 @@ with col_ctrl:
                 edit_day = st.number_input("일차 (Day)", min_value=1, max_value=99,
                                            value=max(1, int(spot.get("day", 1))), step=1,
                                            key=f"inp_day_{sid}")
-                edit_tip = st.text_input("메모/팁", value=spot.get("tip", ""), key=f"inp_tip_{sid}")
+                edit_tip = st.text_area("메모/팁 (Enter로 줄바꿈)", value=spot.get("tip", ""),
+                                        key=f"inp_tip_{sid}", height=90)
 
                 b_save, b_cancel = st.columns(2)
                 if b_save.button("저장", key=f"save_{sid}", use_container_width=True):
@@ -590,8 +592,13 @@ with col_ctrl:
                     unsafe_allow_html=True,
                 )
 
-                # 3줄째: 팁
-                st.caption(f"💡 {spot['tip']}")
+                # 3줄째: 팁 (줄바꿈 유지)
+                tip_html = html.escape(spot["tip"]).replace("\n", "<br>")
+                st.markdown(
+                    f'<div style="font-size:0.78rem;color:#4B5563;line-height:1.4;padding-left:2px;">'
+                    f'💡 {tip_html}</div>',
+                    unsafe_allow_html=True,
+                )
 
     # 2열 그리드로 나란히 배치
     for i in range(0, len(spots), 2):
@@ -618,7 +625,7 @@ with col_ctrl:
                                        index=pick_index(time_options(), "10:00"),
                                        key="new_end", disabled=new_start == "종일")
                 new_time = make_time(new_start, new_end)
-                new_tip = st.text_input("메모/팁", placeholder="예: 소양강 조망 카페")
+                new_tip = st.text_area("메모/팁 (Enter로 줄바꿈)", placeholder="예: 소양강 조망 카페", height=90)
                 new_lat = st.number_input("위도(Lat)", value=37.8870, format="%.4f")
                 new_lon = st.number_input("경도(Lon)", value=127.7650, format="%.4f")
 
