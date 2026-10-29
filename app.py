@@ -354,7 +354,7 @@ def render_embedded_google_map(spots, done_states: list[bool]) -> None:
     spots_json = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     final_html = MAP_TEMPLATE.replace("__SPOTS_JSON__", spots_json)
     with st.container(key="mapbox"):
-        components.html(final_html, height=350)  # 높이를 350으로 축소하여 겹침 방지
+        components.html(final_html, height=420)  # 높이를 350으로 축소하여 겹침 방지
 
 
 # ======================================================================
