@@ -12,7 +12,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 # ======================================================================
-# 데이터 / 저장 로직
+# 데이터 / 저장 로직 (set_page_config 보다 먼저 실행)
 # ======================================================================
 DEFAULT_TITLE = "춘천 실시간 여행 트래커"
 
@@ -36,8 +36,7 @@ def build_payload() -> dict:
         "page_title": ss.get("trip_title", DEFAULT_TITLE),
         "saved_at": datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d %H:%M"),
         "spots": [
-            # 체크박스 증발을 막기 위해 안전한 백업(backup_chk_) 값을 기준으로 저장
-            {**s, "done": bool(ss.get(f"backup_chk_{s['id']}", False))}
+            {**s, "done": bool(ss.get(f"chk_{s['id']}", False))}
             for s in ss.spots_data
         ],
     }
@@ -67,7 +66,6 @@ def apply_payload(data: dict) -> None:
     
     for sid, d in dones.items():
         ss[f"chk_{sid}"] = d
-        ss[f"backup_chk_{sid}"] = d
         
     for k in [k for k in ss.keys() if str(k).startswith(("inp_name_", "inp_time_", "inp_start_", "inp_end_", "inp_day_", "inp_tip_"))]:
         del ss[k]
@@ -79,16 +77,11 @@ def save_filename() -> str:
     name = re.sub(r'[\\/:*?"<>|]+', "_", name)
     return name if name.lower().endswith(".json") else f"{name}.json"
 
-# ---- 콜백 ----
-def on_check_change(sid: str) -> None:
-    """체크박스가 클릭될 때마다 안전한 백업 변수에 상태를 즉시 덮어씀"""
-    st.session_state[f"backup_chk_{sid}"] = st.session_state[f"chk_{sid}"]
-
 def delete_spot(sid: str) -> None:
     ss = st.session_state
     ss.spots_data = [s for s in ss.spots_data if s["id"] != sid]
     ss.editing_flags.pop(sid, None)
-    stale = [k for k in ss.keys() if k == f"chk_{sid}" or k == f"backup_chk_{sid}" or (str(k).startswith("inp_") and str(k).endswith(f"_{sid}"))]
+    stale = [k for k in ss.keys() if k == f"chk_{sid}" or (str(k).startswith("inp_") and str(k).endswith(f"_{sid}"))]
     for k in stale: del ss[k]
 
 def sync_title() -> None:
@@ -200,18 +193,8 @@ CSS = """
     .st-key-topbar button {padding-left: 0.3rem !important; padding-right: 0.3rem !important; white-space: nowrap;}
 
     .st-key-mapbox {margin-bottom: 0 !important;}
-    
-    /* 기존 마이너스 여백 제거 및 정상화 */
-    .st-key-progress_wrap {
-        margin-top: 0.5rem !important; 
-    }
-    
-    /* 지도 높이를 화면 폭에 맞춰 자동으로 계산하도록 강제 */
-    .st-key-mapbox iframe {
-        width: 100% !important; 
-        height: auto !important;
-        aspect-ratio: 1 / 1;
-    }
+    .st-key-progress_wrap {margin-top: 0.5rem !important;}
+    .st-key-mapbox iframe {width: 100% !important; height: auto !important; aspect-ratio: 1 / 1;}
 </style>
 """
 TIME_SLOTS = [f"{h:02d}:{m:02d}" for h in range(5, 24) for m in (0, 30)]
@@ -240,21 +223,14 @@ def day_color_css() -> str:
     for d in sorted({int(s["day"]) for s in st.session_state.spots_data}):
         bg, bd = DAY_PALETTE[(max(d, 1) - 1) % len(DAY_PALETTE)]
         sel = f'[class*="st-key-card_d{d}_"]'
-        rules.append(
-            f'{sel} [data-testid="stVerticalBlockBorderWrapper"] {{'
-            f'background:{bg} !important; border-color:{bd} !important; '
-            f'padding: 0.15rem 0.4rem !important;'
-            f'}} '
-            f'{sel} {{ margin-bottom: -0.6rem !important; }}'
-        )
+        rules.append(f'{sel}, {sel} [data-testid="stVerticalBlockBorderWrapper"] {{background:{bg} !important; border-color:{bd} !important;}}')
     return "<style>" + "\n".join(rules) + "</style>"
 
 st.markdown(CSS + day_color_css(), unsafe_allow_html=True)
 
-# ===== 체크박스 초기화 설정 =====
 for s in st.session_state.spots_data:
     sid = s["id"]
-    st.session_state.setdefault(f"backup_chk_{sid}", False)
+    st.session_state.setdefault(f"chk_{sid}", False)
     st.session_state.editing_flags.setdefault(sid, False)
 
 
@@ -364,12 +340,19 @@ def render_embedded_google_map(spots, done_states: list[bool]) -> None:
     spots_json = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     final_html = MAP_TEMPLATE.replace("__SPOTS_JSON__", spots_json)
     with st.container(key="mapbox"):
-        components.html(final_html, height=380)  # 높이를 350으로 축소하여 겹침 방지
+        components.html(final_html, height=380)
 
 
 # ======================================================================
-# 화면 레이아웃
+# 화면 레이아웃 및 실시간 동기화
 # ======================================================================
+if st.session_state.synced_json is not None:
+    _cur = build_payload()
+    _cur_json = canon(_cur)
+    if _cur_json != st.session_state.synced_json:
+        push_remote(_cur)
+        st.session_state.synced_json = _cur_json
+
 @st.fragment(run_every=3)
 def sync_poll() -> None:
     ok, remote = fetch_remote()
@@ -386,7 +369,8 @@ def sync_poll() -> None:
 sync_poll()
 
 _title = st.session_state.get("trip_title", DEFAULT_TITLE).strip() or DEFAULT_TITLE
-st.markdown(f"<div style='font-size: 1.6rem; font-weight: 800; padding-bottom: 0.3rem;'>🚞 {_title}</div>", unsafe_allow_html=True)
+st.markdown(f"<div style='font-size: 1.6rem; font-weight: 800; padding-bottom: 0.3rem;'>🚗 {_title}</div>", unsafe_allow_html=True)
+st.caption("📱 우측 상단 타겟 버튼(⌖)을 누르면 내 위치 중심으로 이동하며, 일정 체크 시 경로가 연결됩니다.")
 
 if st.session_state.get("msg"):
     st.toast(st.session_state.pop("msg"))
@@ -394,15 +378,18 @@ if st.session_state.get("msg"):
 col_map, col_ctrl = st.columns([1.1, 1.2])
 
 spots = st.session_state.spots_data
-# 화면 표시 및 진행률 계산에 철저히 안전한 백업 변수(backup_chk_)를 사용합니다.
-done_flags = [st.session_state.get(f"backup_chk_{s['id']}", False) for s in spots]
+done_flags = [st.session_state.get(f"chk_{s['id']}", False) for s in spots]
 n_done = sum(done_flags)
 
 with col_ctrl:
+    def on_checkbox_change(sid: str):
+        """체크박스가 변경되는 즉시 화면을 리런하여 배지와 지도 선을 실시간 반영"""
+        st.rerun()
+
     def render_card(spot, idx):
         sid = spot["id"]
         key = f"chk_{sid}"
-        checked = st.session_state.get(f"backup_chk_{sid}", False) # 백업된 완료 상태 불러오기
+        checked = st.session_state.get(key, False)
         is_editing = st.session_state.editing_flags.get(sid, False)
 
         with st.container(border=True, key=f"card_d{spot['day']}_{sid}"):
@@ -434,7 +421,8 @@ with col_ctrl:
                 naver_url = f"https://search.naver.com/search.naver?query={q}"
                 with st.container(key=f"hdr_{sid}"):
                     c_chk, c_name, c_edit, c_del = st.columns([1, 7, 1, 1])
-                    with c_chk: st.checkbox(spot["name"], value=checked, key=key, label_visibility="collapsed")
+                    # on_change를 달아 체크하는 즉시 화면이 리런되며 배지와 상태가 100% 동기화되도록 수정
+                    with c_chk: st.checkbox(spot["name"], key=key, on_change=on_checkbox_change, args=(sid,), label_visibility="collapsed")
                     with c_name: st.markdown(f'<a class="spot-name" href="{naver_url}" target="_blank" rel="noopener">{html.escape(spot["name"])}</a>', unsafe_allow_html=True)
                     with c_edit:
                         if st.button("✏️", key=f"btn_edit_{sid}", help="일정 수정"):
@@ -482,7 +470,6 @@ with col_ctrl:
                         new_id = f"custom_{uuid4().hex[:6]}"
                         st.session_state.spots_data.append(dict(id=new_id, day=new_day, name=f"{len(spots)+1}. {new_name}", time=new_time, lat=new_lat, lon=new_lon, desc="사용자 등록 장소", tip=new_tip))
                         st.session_state[f"chk_{new_id}"] = False
-                        st.session_state[f"backup_chk_{new_id}"] = False
                         st.session_state.editing_flags[new_id] = False
                         st.rerun()
 
@@ -502,9 +489,3 @@ with col_map:
     render_embedded_google_map(spots, done_flags)
     with st.container(key="progress_wrap"):
         st.progress(n_done / total_spots, text=f"진행률: {n_done} / {len(spots)} 코스 완료 ({n_done * 100 // total_spots}%)")
-
-if st.session_state.synced_json is not None:
-    _cur = build_payload()
-    _cur_json = canon(_cur)
-    if _cur_json != st.session_state.synced_json and push_remote(_cur):
-        st.session_state.synced_json = _cur_json
