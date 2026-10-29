@@ -376,7 +376,9 @@ def sync_poll() -> None:
 sync_poll()
 
 _title = st.session_state.get("trip_title", DEFAULT_TITLE).strip() or DEFAULT_TITLE
-st.subheader(f"🚞 {_title}")
+# HTML로 정확한 글자 크기와 여백을 지정하여 잘림 방지 (font-size 값을 조절해 크기를 바꿀 수 있습니다)
+st.markdown(f"<div style='font-size: 1.6rem; font-weight: 800; padding-bottom: 0.3rem;'>🚞 {_title}</div>", unsafe_allow_html=True)
+
 
 if st.session_state.get("msg"):
     st.toast(st.session_state.pop("msg"))
