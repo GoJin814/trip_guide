@@ -387,7 +387,7 @@ st.set_page_config(
 # ======================================================================
 CSS = """
 <style>
-    .block-container {padding: 3.8rem 0.6rem 2rem 0.6rem !important;}
+    .block-container {padding: 3.3rem 0.6rem 2rem 0.6rem !important;}
     /* 당겨서 새로고침 방해 요소 제거: 모든 스크롤 영역의 overscroll을 기본값(auto)으로 */
     *, *::before, *::after {overscroll-behavior-y: auto !important;}
     .stCheckbox label {font-size: 0.92rem !important; font-weight: 700 !important; cursor: pointer; color: #111827;}
