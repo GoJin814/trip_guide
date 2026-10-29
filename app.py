@@ -476,7 +476,7 @@ with col_ctrl:
                         st.rerun()
 
         with top_c2:
-            with st.popover("💾 저장", use_container_width=True):
+            with st.popover("💾 저장/불러오기", use_container_width=True):
                 st.markdown("##### 💾 여행 저장 / 불러오기")
                 st.text_input("여행 제목", value=st.session_state.get("trip_title", DEFAULT_TITLE), key="title_input", on_change=sync_title)
                 st.text_input("저장 파일 이름", value="chuncheon_trip", key="save_name")
