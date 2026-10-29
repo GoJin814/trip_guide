@@ -674,9 +674,9 @@ sync_poll()
 # 화면
 # ======================================================================
 _title = st.session_state.get("trip_title", DEFAULT_TITLE).strip() or DEFAULT_TITLE
-st.markdown(f"<div style='font-size: 1.6rem; font-weight: 800; padding-bottom: 0.3rem;'> {_title}</div>",
+st.markdown(f"<div style='font-size: 1.6rem; font-weight: 800; padding-bottom: 0.3rem;'>🚞 {_title}</div>",
             unsafe_allow_html=True)
-st.page_link("pages/2_여행_기록.py", label="📖 여행 기록 페이지로")
+st.page_link("pages/records.py", label="📖 여행 기록 페이지로")
 
 if st.session_state.get("msg"):
     st.toast(st.session_state.pop("msg"))
