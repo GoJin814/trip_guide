@@ -570,7 +570,7 @@ if st.session_state.get("day_filter") not in _day_opts:
     st.session_state.day_filter = 0
 sel_day = st.session_state.day_filter
 _max_day = max((int(s["day"]) for s in all_spots), default=1)
-_trip_len = f"({_max_day - 1}박 {_max_day}일)  "
+_trip_len = f"({_max_day - 1}박 {_max_day}일)    "
 _row_style = ("height:2.4rem;display:flex;align-items:center;font-size:0.9rem;"
               "font-weight:700;color:#374151;white-space:nowrap;")
 with st.container(key="daybar"):
