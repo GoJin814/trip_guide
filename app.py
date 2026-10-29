@@ -145,7 +145,7 @@ CSS = """
     /* ---- 일정 카드: 위/아래 여백 균형 ---- */
     div[data-testid="stVerticalBlockBorderWrapper"] {
         padding: 0.3rem 0.75rem 0.3rem 0.75rem !important;
-        margin-bottom: 0.2rem !important;
+        margin-bottom: 0.1rem !important;
         border-radius: 10px !important;
     }
     [class*="st-key-card_"] [data-testid="stVerticalBlock"] {gap: 0.3rem !important;}
