@@ -393,8 +393,7 @@ with col_ctrl:
     def render_card(spot, idx):
         sid = spot["id"]
         key = f"chk_{sid}"
-        # 체크박스 상태는 무조건 백업에서 끌어옵니다.
-        checked = st.session_state.get(f"backup_chk_{sid}", False)
+        checked = st.session_state.get(f"backup_chk_{sid}", False) # 백업된 완료 상태 불러오기
         is_editing = st.session_state.editing_flags.get(sid, False)
 
         with st.container(border=True, key=f"card_d{spot['day']}_{sid}"):
@@ -426,9 +425,7 @@ with col_ctrl:
                 naver_url = f"https://search.naver.com/search.naver?query={q}"
                 with st.container(key=f"hdr_{sid}"):
                     c_chk, c_name, c_edit, c_del = st.columns([1, 7, 1, 1])
-                    with c_chk: 
-                        # on_change 이벤트를 달아 클릭 시 백업 상태를 즉시 갱신하도록 처리
-                        st.checkbox(spot["name"], value=checked, key=key, on_change=on_check_change, args=(sid,), label_visibility="collapsed")
+                    with c_chk: st.checkbox(spot["name"], value=checked, key=key, label_visibility="collapsed")
                     with c_name: st.markdown(f'<a class="spot-name" href="{naver_url}" target="_blank" rel="noopener">{html.escape(spot["name"])}</a>', unsafe_allow_html=True)
                     with c_edit:
                         if st.button("✏️", key=f"btn_edit_{sid}", help="일정 수정"):
