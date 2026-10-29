@@ -1,7 +1,8 @@
 import copy
+import re
+from urllib.parse import quote
 import json
 from datetime import datetime
-from pathlib import Path
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -12,7 +13,6 @@ import streamlit.components.v1 as components
 # 데이터 / 저장 로직  (set_page_config 보다 먼저 실행되어야 제목을 불러올 수 있음)
 # ======================================================================
 DEFAULT_TITLE = "춘천 실시간 여행 트래커"
-SAVE_FILE = Path(__file__).with_name("trip_save.json")
 
 # 기본 여행 코스 데이터 (장소명, 시간 분리)
 DEFAULT_SPOTS = [
@@ -86,11 +86,10 @@ def apply_payload(data: dict) -> None:
     ss["title_input"] = ss.trip_title
 
 
-def read_saved_file():
-    try:
-        return json.loads(SAVE_FILE.read_text("utf-8"))
-    except Exception:
-        return None
+def save_filename() -> str:
+    name = str(st.session_state.get("save_name", "")).strip() or "chuncheon_trip"
+    name = re.sub(r'[\\/:*?"<>|]+', "_", name)
+    return name if name.lower().endswith(".json") else f"{name}.json"
 
 
 # ---- 콜백 ----
@@ -99,29 +98,21 @@ def reset_checks() -> None:
         st.session_state[f"chk_{s['id']}"] = False
 
 
+def delete_spot(sid: str) -> None:
+    ss = st.session_state
+    ss.spots_data = [s for s in ss.spots_data if s["id"] != sid]
+    ss.editing_flags.pop(sid, None)
+    stale = [k for k in ss.keys()
+             if k == f"chk_{sid}" or (str(k).startswith("inp_") and str(k).endswith(f"_{sid}"))]
+    for k in stale:
+        del ss[k]
+
+
 def sync_title() -> None:
     # 입력창(title_input) 값을 실제 제목(trip_title)으로 옮김
     st.session_state.trip_title = st.session_state.get("title_input", DEFAULT_TITLE)
 
 
-def save_to_server() -> None:
-    try:
-        SAVE_FILE.write_text(json.dumps(build_payload(), ensure_ascii=False, indent=2), "utf-8")
-        st.session_state.msg = "💾 저장했어요. 다음에 접속하면 자동으로 불러옵니다."
-    except OSError:
-        st.session_state.msg = "⚠️ 서버에 저장하지 못했어요. '파일로 내보내기'를 이용해 주세요."
-
-
-def load_from_server() -> None:
-    data = read_saved_file()
-    if data is None:
-        st.session_state.msg = "⚠️ 저장된 일정이 없어요."
-        return
-    try:
-        apply_payload(data)
-        st.session_state.msg = "📂 저장된 일정을 불러왔어요."
-    except Exception:
-        st.session_state.msg = "⚠️ 저장 파일을 읽지 못했어요."
 
 
 def load_from_upload() -> None:
@@ -141,12 +132,6 @@ if "spots_data" not in st.session_state:
     st.session_state.spots_data = copy.deepcopy(DEFAULT_SPOTS)
     st.session_state.editing_flags = {}
     st.session_state.trip_title = DEFAULT_TITLE
-    _saved = read_saved_file()
-    if _saved is not None:
-        try:
-            apply_payload(_saved)
-        except Exception:
-            pass
 
 st.set_page_config(
     page_title=st.session_state.get("trip_title", DEFAULT_TITLE).strip() or DEFAULT_TITLE,
@@ -200,6 +185,9 @@ CSS = """
     }
     .st-key-topbar [data-testid="stColumn"], .st-key-topbar [data-testid="column"] {min-width: 0 !important;}
     .st-key-topbar button {padding-left: 0.3rem !important; padding-right: 0.3rem !important; white-space: nowrap;}
+
+    /* 지도: 정사각형 비율 */
+    .st-key-mapbox iframe {width: 100% !important; height: auto !important; aspect-ratio: 1 / 1;}
 </style>
 """
 TIME_SLOTS = [f"{h:02d}:{m:02d}" for h in range(5, 24) for m in (0, 30)]
@@ -472,7 +460,8 @@ def render_embedded_google_map(spots, done_states: list[bool]) -> None:
     ]
     spots_json = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
     final_html = MAP_TEMPLATE.replace("__SPOTS_JSON__", spots_json)
-    components.html(final_html, height=470)
+    with st.container(key="mapbox"):
+        components.html(final_html, height=470)
 
 # ---------- 화면 레이아웃 ----------
 st.title(f"🚗 {st.session_state.get('trip_title', DEFAULT_TITLE).strip() or DEFAULT_TITLE}")
@@ -528,15 +517,13 @@ with col_ctrl:
                 st.markdown("##### 💾 여행 저장 / 불러오기")
                 st.text_input("여행 제목", value=st.session_state.get("trip_title", DEFAULT_TITLE),
                               key="title_input", on_change=sync_title)
-                st.button("💾 지금 상태 저장", on_click=save_to_server, use_container_width=True)
-                st.button("📂 저장된 일정 불러오기", on_click=load_from_server, use_container_width=True)
-                _saved = read_saved_file()
-                st.caption(f"마지막 저장: {_saved.get('saved_at', '-')}" if _saved else "아직 저장된 일정이 없어요.")
+                st.text_input("저장 파일 이름", value="chuncheon_trip", key="save_name")
+                st.caption("이 기기의 다운로드 폴더에 저장돼요. 서버에는 저장되지 않아요.")
                 st.divider()
                 st.download_button(
-                    "⬇️ 파일로 내보내기 (백업)",
+                    "⬇️ 내 기기에 저장",
                     data=json.dumps(build_payload(), ensure_ascii=False, indent=2),
-                    file_name="chuncheon_trip.json",
+                    file_name=save_filename(),
                     mime="application/json",
                     use_container_width=True,
                 )
@@ -584,6 +571,10 @@ with col_ctrl:
                 if b_cancel.button("취소", key=f"cancel_{sid}", use_container_width=True):
                     st.session_state.editing_flags[sid] = False
                     st.rerun()
+                with st.popover("🗑️ 이 일정 삭제", use_container_width=True):
+                    st.write(f"‘{spot['name']}’ 일정을 삭제할까요?")
+                    st.button("삭제 확인", key=f"del_{sid}", type="primary",
+                              on_click=delete_spot, args=(sid,), use_container_width=True)
 
             # 2. 일반 보기 모드일 때
             else:
@@ -602,7 +593,8 @@ with col_ctrl:
                             st.session_state.editing_flags[sid] = True
                             st.rerun()
 
-                st.caption(f"💡 {spot['tip']}")
+                q = quote(re.sub(r"^\d+\.\s*", "", spot["name"]))
+                st.caption(f"💡 {spot['tip']} · [🔍 네이버 검색](https://search.naver.com/search.naver?query={q})")
 
     # 2열 그리드로 나란히 배치
     for i in range(0, len(spots), 2):
