@@ -107,13 +107,6 @@ CSS = """
     .rc-meta {font-size: 0.8rem; color: #374151; margin-top: 2px;}
     .rc-memo {font-size: 0.78rem; color: #4B5563; line-height: 1.4; margin-top: 4px;}
     .rc-memo div {padding-left: 0.9em; text-indent: -0.9em;}
-    [class*="st-key-rc_"] {position: relative;}
-    [class*="st-key-fit_"] button {position: static !important; justify-content: flex-start !important; text-align: left !important;}
-    [class*="st-key-fit_"] button p {font-weight: 800; font-size: 1rem; color: #111827; text-align: left;
-        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;}
-    [class*="st-key-fit_"] button::after {content: ""; position: absolute; inset: 0; z-index: 1;}
-    [class*="st-key-rc_"] [data-testid="stColumn"]:nth-child(n+2), [class*="st-key-rc_"] [data-testid="column"]:nth-child(n+2) {
-        position: relative; z-index: 2;}
 </style>
 """
 
@@ -300,6 +293,7 @@ def fit_record(rid: str) -> None:
     ss = st.session_state
     rec = next((r for r in ss.records if r["id"] == rid), None)
     pts = [[p["lat"], p["lon"]] for p in rec_points(rec) if p["lat"] is not None and p["lon"] is not None] if rec else []
+    ss.sel_rec = rid
     if pts:
         ss.focus = {"lat": pts[0][0], "lon": pts[0][1], "points": pts, "nonce": uuid4().hex}
 
@@ -516,28 +510,35 @@ def tab_nav(current: str) -> None:
 
 
 tab_nav("여행 기록")
-st.markdown("<div style='font-size:1.6rem;font-weight:800;padding-bottom:0.3rem;'>🌿 행복 충전 기록</div>",
+st.markdown("<div style='font-size:1.6rem;font-weight:800;padding-bottom:0.3rem;'>행복 충전 기록</div>",
             unsafe_allow_html=True)
 
 order = st.session_state.get("rec_order", ORDER_OPTIONS[0])
 recs = sort_records(st.session_state.records, order)
+sel_id = st.session_state.get("sel_rec")
+if sel_id not in [r["id"] for r in recs]:
+    sel_id = recs[0]["id"] if recs else None  # 아직 고르지 않았으면 첫 카드를 선택으로 표시
+sel_rec = next((r for r in recs if r["id"] == sel_id), None)
 
 places, routes = [], []
-for r in recs:
+for r in [x for x in recs if x["id"] != sel_id] + ([sel_rec] if sel_rec else []):  # 선택한 기록을 맨 위에 그림
+    tone = "sel" if r["id"] == sel_id else "mute"
     info = f"{r.get('trip_title') or ''} · {r.get('start', '')}~{r.get('end', '')}"
     valid = [p for p in rec_points(r) if p["lat"] is not None and p["lon"] is not None]
     for i, p in enumerate(valid, 1):
-        places.append({"name": f"{i}. {p['name']}", "addr": info, "lat": p["lat"], "lon": p["lon"]})
+        places.append({"name": f"{i}. {p['name']}", "addr": info, "lat": p["lat"], "lon": p["lon"],
+                       "n": i, "tone": tone})
     if len(valid) >= 2:
-        routes.append([[p["lat"], p["lon"]] for p in valid])
-
+        routes.append({"pts": [[p["lat"], p["lon"]] for p in valid],
+                       "color": "#2563EB" if tone == "sel" else "#9CA3AF"})
 
 col_map, col_list = st.columns([1.1, 1.2])
 
 with col_map:
     with st.container(key="mapbox"):
         MAP_COMPONENT(spots=[], places=places, routes=routes, distance=True, bar=False,
-                      selected=-1, focus=st.session_state.get("focus"), key="rec_map", default=None)
+                      selected=-1, focus=st.session_state.get("focus"), key="rec_map", default=None,
+                      label=(sel_rec.get("trip_title") or "여행") if sel_rec else "")
     if not places:
         st.caption("출발지·도착지 좌표가 있는 기록이 지도에 표시돼요.")
 
@@ -555,14 +556,11 @@ with col_list:
             h_title, h_pin, h_edit, h_del = st.columns([8, 1, 1, 1])
             has_pts = any(p["lat"] is not None and p["lon"] is not None for p in rec_points(rec))
             with h_title:
-                with st.container(key=f"fit_{rid}"):
-                    st.button(rec.get("trip_title") or "여행", key=f"fitb_{rid}", disabled=not has_pts,
-                              help="누르면 지도에서 이 기록을 한눈에 보여줘요", on_click=fit_record, args=(rid,),
-                              use_container_width=True)
-            pin = next((_pt(p["lat"], p["lon"]) for p in reversed(rec_points(rec)) if _pt(p["lat"], p["lon"])), None)
+                st.markdown(f'<div class="rc-title">{html.escape(rec.get("trip_title") or "여행")}</div>',
+                            unsafe_allow_html=True)
             with h_pin:
-                st.button("📍", key=f"fp_{rid}", help="지도에서 보기", disabled=pin is None,
-                          on_click=set_focus, args=(pin[0] if pin else None, pin[1] if pin else None))
+                st.button("📍", key=f"fp_{rid}", help="선택하고 지도에서 이 기록 한눈에 보기", disabled=not has_pts,
+                          on_click=fit_record, args=(rid,))
             with h_edit:
                 if st.button("✏️", key=f"ed_{rid}", help="수정"):
                     edit_dialog(rid)
@@ -587,3 +585,10 @@ with col_list:
                 items = "".join(f"<div>- {html.escape(ln)}</div>" for ln in memo_lines)
                 st.markdown(f'<div class="rc-memo">{items}</div>', unsafe_allow_html=True)
             st.markdown('<div style="height:0.9rem;"></div>', unsafe_allow_html=True)  # 카드 아래 여백
+
+# 선택한 카드 색 (여행 정보 카드와 같은 파란색 계열)
+if sel_id:
+    _sel = f'[class*="st-key-rc_{sel_id}"]'
+    st.markdown(f'<style>{_sel}, {_sel} [data-testid="stVerticalBlockBorderWrapper"] '
+                f'{{background:#EFF6FF !important; border-color:#60A5FA !important;}}</style>',
+                unsafe_allow_html=True)
