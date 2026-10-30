@@ -72,6 +72,19 @@ PTR_JS = """
     doc.addEventListener('touchstart', function (e) { start(e.touches[0].clientY); }, {passive: true});
     doc.addEventListener('touchmove', function (e) { move(e.touches[0].clientY); }, {passive: true});
     doc.addEventListener('touchend', end, {passive: true});
+    // 시간 등 목록 선택칸: 글자 입력 없이 목록에서만 고르게 (모바일에서 키보드가 뜨지 않음)
+    var lockQueued = false;
+    function lockSelects() {
+      lockQueued = false;
+      doc.querySelectorAll('[data-baseweb="select"] input').forEach(function (el) {
+        if (el.getAttribute('inputmode') !== 'none') el.setAttribute('inputmode', 'none');
+        if (!el.readOnly) el.readOnly = true;
+      });
+    }
+    new MutationObserver(function () {
+      if (!lockQueued) { lockQueued = true; top.requestAnimationFrame(lockSelects); }
+    }).observe(doc.body, {childList: true, subtree: true});
+    lockSelects();
     top.addEventListener('message', function (e) {
       var d = e.data;
       if (!d) return;
@@ -254,9 +267,47 @@ def apply_payload(data: dict) -> None:
 
 
 def save_filename() -> str:
-    name = str(st.session_state.get("save_name", "")).strip() or "chuncheon_trip"
+    name = str(st.session_state.get("save_name", "")).strip() or "trip_plan"
     name = re.sub(r'[\\/:*?"<>|]+', "_", name)
     return name if name.lower().endswith(".json") else f"{name}.json"
+
+
+DOWNLOAD_HTML = r"""
+<style>
+  html, body { margin: 0; padding: 0; background: transparent;
+    font-family: "Source Sans Pro", "Source Sans", -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; }
+  button { width: 100%; height: 40px; border: 1px solid rgba(49,51,63,0.2); border-radius: 8px; background: #fff;
+    color: #31333F; font-size: 16px; font-family: inherit; cursor: pointer; }
+  button:active { background: #F0F2F6; }
+</style>
+<button id="b">⬇️ 내 기기에 저장</button>
+<script>
+(function () {
+  var DATA = __DATA__, FALLBACK = __FALLBACK__;
+  document.getElementById('b').addEventListener('click', function () {
+    var name = FALLBACK;
+    try {   // 입력칸에 지금 쓰여 있는 값을 그대로 사용 (Enter를 누르지 않아도 됨)
+      var inp = window.parent.document.querySelector('[role="dialog"] input[aria-label="저장 파일 이름"]');
+      if (inp) name = inp.value;
+    } catch (e) {}
+    name = (name || '').trim().replace(/[\\\/:*?"<>|]+/g, '_');
+    if (!name) name = 'trip_plan';
+    if (!/\.json$/i.test(name)) name += '.json';
+    var url = URL.createObjectURL(new Blob([DATA], { type: 'application/json' }));
+    var d; try { d = window.parent.document; void d.body; } catch (e) { d = document; }
+    var a = d.createElement('a');
+    a.href = url; a.download = name; d.body.appendChild(a); a.click();
+    setTimeout(function () { try { d.body.removeChild(a); } catch (e) {} URL.revokeObjectURL(url); }, 1500);
+  });
+})();
+</script>
+"""
+
+
+def download_button_html(data: str, fallback: str) -> str:
+    payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
+    return (DOWNLOAD_HTML.replace("__DATA__", payload)
+            .replace("__FALLBACK__", json.dumps(fallback, ensure_ascii=False)))
 
 
 def load_from_upload() -> None:
@@ -266,6 +317,7 @@ def load_from_upload() -> None:
         return
     try:
         apply_payload(json.loads(f.getvalue().decode("utf-8")))
+        st.session_state["save_name"] = re.sub(r"\.json$", "", str(f.name or ""), flags=re.I)  # 불러온 파일 이름으로
         st.session_state.msg = "⬆️ 파일에서 일정을 불러왔어요."
     except Exception:
         st.session_state.msg = "⚠️ 올바른 일정 파일이 아니에요."
@@ -727,11 +779,10 @@ def save_dialog() -> None:
     if st.button("제목 적용", use_container_width=True):
         sync_title()
         st.rerun()
-    st.text_input("저장 파일 이름", value="chuncheon_trip", key="save_name")
+    st.text_input("저장 파일 이름", value="", key="save_name", placeholder="예: 춘천여행 (비우면 trip_plan)")
     st.caption("이 기기의 다운로드 폴더에 저장돼요. 서버에는 저장되지 않아요.")
-    st.download_button("⬇️ 내 기기에 저장",
-                       data=json.dumps(build_payload(), ensure_ascii=False, indent=2),
-                       file_name=save_filename(), mime="application/json", use_container_width=True)
+    components.html(download_button_html(json.dumps(build_payload(), ensure_ascii=False, indent=2),
+                                         save_filename()), height=46)
     st.divider()
     st.file_uploader("⬆️ 백업 파일 선택", type="json", key="upload_file")
     # 콜백으로 실행해야 위젯(제목 입력칸 등)을 그리기 전에 값을 바꿀 수 있음
