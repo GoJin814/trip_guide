@@ -108,6 +108,7 @@ CSS = """
     .rc-meta {font-size: 0.8rem; color: #374151; margin-top: 2px;}
     .rc-memo {font-size: 0.78rem; color: #4B5563; line-height: 1.4; margin-top: 4px;}
     .rc-memo div {padding-left: 0.9em; text-indent: -0.9em;}
+    [class*="st-key-rc_"] button svg, [class*="st-key-rc_"] button [data-testid="stIconMaterial"] {display: none !important;}
 </style>
 """
 
@@ -523,6 +524,29 @@ if st.session_state.get("rec_dirty"):
     save_records()  # 이전 저장이 실패했다면 다시 시도
 
 
+@st.dialog("🗺️ 여행 정보로 불러오기")
+def load_dialog(rid: str) -> None:
+    ss = st.session_state
+    rec = next((r for r in ss.records if r["id"] == rid), None)
+    if not rec:
+        st.info("선택한 기록을 찾지 못했어요.")
+        return
+    st.write(f"‘{rec.get('trip_title') or '여행'}’ 기록을 여행 정보로 불러올까요?")
+    plan = rec.get("plan")
+    if isinstance(plan, dict) and plan.get("spots"):
+        st.caption("일정별 시간·일차·메모까지 모두 불러와요.")
+    else:
+        st.warning("이 기록에는 장소만 저장돼 있어요. 시간·일차·메모가 없어서 장소는 Day 1·종일로 불러와요.")
+    st.caption("지금 여행 정보에 있는 계획은 이 기록 내용으로 바뀌어요. "
+               "남겨 두려면 먼저 여행 정보에서 ‘기록으로 넘기기’로 저장해 주세요.")
+    if st.button("불러오기", type="primary", use_container_width=True, key=f"ldgo_{rid}"):
+        if load_record_to_plan(rec):
+            ss.go_app = True
+            st.rerun()
+        else:
+            st.error("불러오지 못했어요. 장소가 없거나 저장소 연결을 확인해 주세요.")
+
+
 @st.fragment(run_every=5)
 def rec_sync_poll() -> None:
     """다른 기기에서 기록이 바뀌면 화면을 맞춤"""
@@ -548,6 +572,9 @@ def rec_sync_poll() -> None:
 st.markdown(CSS, unsafe_allow_html=True)
 components.html(PTR_JS, height=0)
 rec_sync_poll()
+
+if st.session_state.pop("go_app", False):   # 불러오기 직후 여행 정보 페이지로 이동
+    st.switch_page("app.py")
 
 if st.session_state.get("msg"):
     st.toast(st.session_state.pop("msg"))
@@ -575,6 +602,11 @@ sel_id = st.session_state.get("sel_rec")
 if sel_id not in [r["id"] for r in recs]:
     sel_id = recs[0]["id"] if recs else None  # 아직 고르지 않았으면 첫 카드를 선택으로 표시
 sel_rec = next((r for r in recs if r["id"] == sel_id), None)
+_pick = st.session_state.get("rec_map")   # 지도 오른쪽 아래 🗺️ 아이콘을 누르면 선택한 기록을 여행 정보로 불러오기
+if isinstance(_pick, dict) and _pick.get("action") == "load" and _pick.get("nonce") != st.session_state.get("last_rec_nonce"):
+    st.session_state.last_rec_nonce = _pick.get("nonce")
+    if sel_rec:
+        load_dialog(sel_rec["id"])
 
 places, routes = [], []
 for r in [x for x in recs if x["id"] != sel_id] + ([sel_rec] if sel_rec else []):  # 선택한 기록을 맨 위에 그림
@@ -593,7 +625,7 @@ col_map, col_list = st.columns([1.1, 1.2])
 with col_map:
     with st.container(key="mapbox"):
         MAP_COMPONENT(spots=[], places=places, routes=routes, distance=True, bar=False,
-                      selected=-1, focus=st.session_state.get("focus"), key="rec_map", default=None,
+                      selected=-1, focus=st.session_state.get("focus"), key="rec_map", default=None, loadBtn=True,
                       label=(sel_rec.get("trip_title") or "여행") if sel_rec else "")
     if not places:
         st.caption("출발지·도착지 좌표가 있는 기록이 지도에 표시돼요.")
@@ -609,7 +641,7 @@ with col_list:
     for rec in recs:
         rid = rec["id"]
         with st.container(border=True, key=f"rc_{rid}"):
-            h_title, h_pin, h_edit, h_load, h_del = st.columns([8, 1, 1, 1, 1])
+            h_title, h_pin, h_edit, h_del = st.columns([8, 1, 1, 1])
             has_pts = any(p["lat"] is not None and p["lon"] is not None for p in rec_points(rec))
             with h_title:
                 st.markdown(f'<div class="rc-title">{html.escape(rec.get("trip_title") or "여행")}</div>',
@@ -620,16 +652,6 @@ with col_list:
             with h_edit:
                 if st.button("✏️", key=f"ed_{rid}", help="수정"):
                     edit_dialog(rid)
-            with h_load:
-                with st.popover("🗺️", help="여행 정보로 불러와 수정하기"):
-                    st.write(f"‘{rec.get('trip_title') or '여행'}’ 기록을 여행 정보로 불러올까요?")
-                    st.caption("지금 여행 정보에 있는 계획은 이 기록 내용으로 바뀌어요. "
-                               "남겨 두려면 먼저 여행 정보에서 ‘기록으로 넘기기’로 저장해 주세요.")
-                    if st.button("불러오기", key=f"ld_{rid}", type="primary", use_container_width=True):
-                        if load_record_to_plan(rec):
-                            st.switch_page("app.py")
-                        else:
-                            st.error("불러오지 못했어요. 장소가 없거나 저장소 연결을 확인해 주세요.")
             with h_del:
                 with st.popover("🗑️", help="삭제"):
                     st.write(f"‘{rec.get('trip_title') or '여행'}’ 기록을 삭제할까요?")
