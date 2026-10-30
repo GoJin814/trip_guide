@@ -1,5 +1,6 @@
 import html
 import json
+import re
 import urllib.request
 from datetime import date, datetime
 from pathlib import Path
@@ -304,6 +305,59 @@ def delete_record(rid: str) -> None:
     save_records()
 
 
+def _clean_name(n) -> str:
+    return re.sub(r"^\d+\.\s*", "", str(n or "")).strip()
+
+
+def plan_from_record(rec: dict):
+    """기록 → 여행 정보 형식. 기록에 저장된 계획(시간·일차·메모·완료)을 지금의 장소 목록
+    (순서·추가·삭제 반영)에 맞춰 되살림. 새로 추가한 장소는 기본값(종일)으로 만듦."""
+    plan = rec.get("plan") if isinstance(rec.get("plan"), dict) else {}
+    old = [s for s in (plan.get("spots") or []) if isinstance(s, dict)]
+    used, spots = set(), []
+    for p in rec_points(rec):
+        if p["lat"] is None or p["lon"] is None:
+            continue
+        hit = None
+        for j, s in enumerate(old):
+            if j in used:
+                continue
+            try:
+                same = (_clean_name(s.get("name")) == _clean_name(p["name"])
+                        and abs(float(s["lat"]) - float(p["lat"])) < 1e-3
+                        and abs(float(s["lon"]) - float(p["lon"])) < 1e-3)
+            except (KeyError, TypeError, ValueError):
+                same = False
+            if same:
+                hit = j
+                break
+        if hit is not None:
+            used.add(hit)
+            spots.append(dict(old[hit]))
+        else:
+            spots.append({"id": f"rec_{uuid4().hex[:6]}", "day": spots[-1]["day"] if spots else 1,
+                          "name": p["name"], "time": "종일", "lat": p["lat"], "lon": p["lon"],
+                          "desc": "", "tip": "", "done": False})
+    if not spots:
+        return None
+    return {"version": 1,
+            "page_title": rec.get("trip_title") or plan.get("page_title") or "여행",
+            "start_date": rec.get("start") or plan.get("start_date"),
+            "saved_at": datetime.now(KST).strftime("%Y-%m-%d %H:%M"),
+            "record_id": rec["id"], "spots": spots}
+
+
+def load_record_to_plan(rec: dict) -> bool:
+    """기록을 여행 정보(공유 저장소)로 불러옴. 성공하면 True"""
+    ss = st.session_state
+    plan = plan_from_record(rec)
+    if plan is None or not push_path(SHARED_PATH, plan):
+        return False
+    ss.synced_json = None   # 여행 정보 페이지가 열리면 방금 저장한 내용을 가져가도록
+    ss.msg = f"🗺️ ‘{rec.get('trip_title') or '여행'}’ 기록을 여행 정보로 불러왔어요."
+    return True
+
+
 # ======================================================================
 # 입력 대화상자 (추가 / 수정 공용)
 # ======================================================================
@@ -429,6 +483,8 @@ def open_form(rid: str, rec: dict) -> None:
                 start=start.isoformat(), end=end.isoformat(),
                 country=country.strip(), memo=memo.strip(),
             )
+            if rec.get("plan") is not None:
+                new["plan"] = rec["plan"]   # 여행 정보에서 넘어온 전체 계획은 그대로 보존
             if rid == "new":
                 ss.records = ss.records + [new]
             else:
@@ -553,7 +609,7 @@ with col_list:
     for rec in recs:
         rid = rec["id"]
         with st.container(border=True, key=f"rc_{rid}"):
-            h_title, h_pin, h_edit, h_del = st.columns([8, 1, 1, 1])
+            h_title, h_pin, h_edit, h_load, h_del = st.columns([8, 1, 1, 1, 1])
             has_pts = any(p["lat"] is not None and p["lon"] is not None for p in rec_points(rec))
             with h_title:
                 st.markdown(f'<div class="rc-title">{html.escape(rec.get("trip_title") or "여행")}</div>',
@@ -564,6 +620,16 @@ with col_list:
             with h_edit:
                 if st.button("✏️", key=f"ed_{rid}", help="수정"):
                     edit_dialog(rid)
+            with h_load:
+                with st.popover("🗺️", help="여행 정보로 불러와 수정하기"):
+                    st.write(f"‘{rec.get('trip_title') or '여행'}’ 기록을 여행 정보로 불러올까요?")
+                    st.caption("지금 여행 정보에 있는 계획은 이 기록 내용으로 바뀌어요. "
+                               "남겨 두려면 먼저 여행 정보에서 ‘기록으로 넘기기’로 저장해 주세요.")
+                    if st.button("불러오기", key=f"ld_{rid}", type="primary", use_container_width=True):
+                        if load_record_to_plan(rec):
+                            st.switch_page("app.py")
+                        else:
+                            st.error("불러오지 못했어요. 장소가 없거나 저장소 연결을 확인해 주세요.")
             with h_del:
                 with st.popover("🗑️", help="삭제"):
                     st.write(f"‘{rec.get('trip_title') or '여행'}’ 기록을 삭제할까요?")
