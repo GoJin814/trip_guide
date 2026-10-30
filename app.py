@@ -206,13 +206,16 @@ def day_color_css() -> str:
 def build_payload() -> dict:
     ss = st.session_state
     start = ss.get("trip_start_input")
-    return {
+    payload = {
         "version": 1,
         "page_title": ss.get("trip_title", DEFAULT_TITLE),
         "start_date": start.isoformat() if isinstance(start, date) else None,
         "saved_at": datetime.now(KST).strftime("%Y-%m-%d %H:%M"),
         "spots": [{**s, "done": bool(ss.done.get(s["id"], False))} for s in ss.spots_data],
     }
+    if ss.get("linked_record"):   # 여행 기록에서 불러온 계획이면 어떤 기록인지 함께 저장
+        payload["record_id"] = ss.linked_record
+    return payload
 
 
 def apply_payload(data: dict) -> None:
@@ -242,6 +245,7 @@ def apply_payload(data: dict) -> None:
         del ss[k]
     ss.trip_title = str(data.get("page_title") or DEFAULT_TITLE)
     ss["title_input"] = ss.trip_title
+    ss.linked_record = str(data.get("record_id") or "") or None
     try:
         if data.get("start_date"):
             ss["trip_start_input"] = date.fromisoformat(str(data["start_date"]))
@@ -550,8 +554,21 @@ def tab_nav(current: str) -> None:
         st.switch_page(targets[pick])
 
 
-def append_record(rec: dict) -> bool:
-    """여행 기록 목록 끝에 한 건 추가 (Firebase)"""
+def fetch_records() -> list:
+    base = db_base_url()
+    if not base:
+        return []
+    try:
+        with urllib.request.urlopen(f"{base}/{RECORD_PATH}.json", timeout=5) as r:
+            data = json.loads(r.read().decode("utf-8"))
+    except Exception:
+        return []
+    old = data.get("records") if isinstance(data, dict) else None
+    return [x for x in (old if isinstance(old, list) else []) if isinstance(x, dict) and x.get("id")]
+
+
+def upsert_record(rec: dict) -> bool:
+    """같은 id의 기록이 있으면 덮어쓰고, 없으면 목록 끝에 추가 (Firebase)"""
     base = db_base_url()
     if not base:
         return False
@@ -563,7 +580,10 @@ def append_record(rec: dict) -> bool:
         return False
     old = data.get("records") if isinstance(data, dict) else None
     recs = [x for x in (old if isinstance(old, list) else []) if isinstance(x, dict) and x.get("id")]
-    recs.append(rec)
+    if any(x["id"] == rec["id"] for x in recs):
+        recs = [rec if x["id"] == rec["id"] else x for x in recs]
+    else:
+        recs.append(rec)
     payload = {"version": 1, "saved_at": datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d %H:%M"),
                "records": recs}
     req = urllib.request.Request(url, data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
@@ -577,47 +597,76 @@ def append_record(rec: dict) -> bool:
 
 @st.dialog("📖 여행 기록으로 넘기기")
 def send_to_records_dialog() -> None:
-    spots_now = st.session_state.spots_data
+    ss = st.session_state
+    spots_now = ss.spots_data
     if not spots_now:
         st.info("넘길 일정이 없어요.")
         return
     names = [re.sub(r"^\d+\.\s*", "", s["name"]) for s in spots_now]
-    labels = [f"Day {s['day']} · {n}" for s, n in zip(spots_now, names)]
     days = sorted({int(s["day"]) for s in spots_now})
     max_day = max(days)
-    start0 = st.session_state.get("trip_start_input") or date.today()
-    default_title = st.session_state.get("trip_title", DEFAULT_TITLE).strip() or DEFAULT_TITLE
+    start0 = ss.get("trip_start_input") or date.today()
+    end0 = start0 + timedelta(days=max_day - 1)
+    default_title = ss.get("trip_title", DEFAULT_TITLE).strip() or DEFAULT_TITLE
 
-    title = st.text_input("여정 제목", value=default_title, key="rec_title")
-    idx_from, idx_to = 0, len(labels) - 1
-    st.caption(f"🛫 출발: {names[0]} · 🛬 도착: {names[-1]}  (첫 일정·마지막 일정으로 지정돼요. "
-               f"아래 장소는 모두 지도에 저장돼요.)")
-    c_s, c_e = st.columns(2)
-    d_start = c_s.date_input("출발일", value=start0, key="rec_start")
-    d_end = c_e.date_input("도착일", value=start0 + timedelta(days=max_day - 1), key="rec_end")
-    country = st.text_input("나라", value="대한민국", key="rec_country")
+    linked_id = ss.get("linked_record")
+    existing = next((r for r in ss.get("rec_cache", []) if r.get("id") == linked_id), None) if linked_id else None
+    mode = "new"
+    if existing:
+        mode = st.radio("저장 방식", ["overwrite", "new"], key=f"rec_mode_{linked_id}",
+                        format_func=lambda m: (f"‘{existing.get('trip_title') or '여행'}’ 기록에 덮어쓰기"
+                                               if m == "overwrite" else "새 기록으로 추가"))
+        if mode == "overwrite":
+            st.caption("기록의 장소 목록도 지금 계획 기준으로 바뀌어요.")
+    base_rec = existing if mode == "overwrite" else None
+    sfx = f"{mode}_{linked_id or 'x'}"
+
+    def _d(v, fallback):
+        try:
+            return date.fromisoformat(str(v))
+        except Exception:
+            return fallback
+
     memo_default = "\n".join(
         f"Day {d}: " + " → ".join(names[i] for i, s in enumerate(spots_now) if int(s["day"]) == d)
         for d in days)
-    memo = st.text_area("메모", value=memo_default, height=120, key="rec_memo")
+    title = st.text_input("여정 제목", value=default_title, key=f"rec_title_{sfx}")
+    st.caption(f"출발: {names[0]} · 도착: {names[-1]}  (첫 일정·마지막 일정으로 지정돼요. "
+               f"아래 장소는 모두 지도에 저장돼요.)")
+    c_s, c_e = st.columns(2)
+    d_start = c_s.date_input("출발일", value=_d(base_rec.get("start"), start0) if base_rec else start0,
+                             key=f"rec_start_{sfx}")
+    d_end = c_e.date_input("도착일", value=_d(base_rec.get("end"), end0) if base_rec else end0,
+                           key=f"rec_end_{sfx}")
+    country = st.text_input("나라", value=(base_rec.get("country") if base_rec else None) or "대한민국",
+                            key=f"rec_country_{sfx}")
+    memo = st.text_area("메모", value=str(base_rec.get("memo", "")) if base_rec else memo_default,
+                        height=120, key=f"rec_memo_{sfx}")
 
-    if st.button("기록으로 넘기기", type="primary", use_container_width=True, key="rec_submit"):
+    if st.button("덮어쓰기" if base_rec else "기록으로 넘기기", type="primary", use_container_width=True,
+                 key=f"rec_submit_{sfx}"):
         if d_end < d_start:
             st.error("도착일은 출발일보다 빠를 수 없어요.")
             return
-        a, b = spots_now[idx_from], spots_now[idx_to]
+        a, b = spots_now[0], spots_now[-1]
         rec = {
-            "id": uuid4().hex,
+            "id": base_rec["id"] if base_rec else uuid4().hex,
             "trip_title": title.strip() or DEFAULT_TITLE,
-            "from_name": names[idx_from], "from_lat": a["lat"], "from_lon": a["lon"],
-            "to_name": names[idx_to], "to_lat": b["lat"], "to_lon": b["lon"],
+            "from_name": names[0], "from_lat": a["lat"], "from_lon": a["lon"],
+            "to_name": names[-1], "to_lat": b["lat"], "to_lon": b["lon"],
             "points": [{"name": n, "lat": s["lat"], "lon": s["lon"]} for n, s in zip(names, spots_now)],
             "start": d_start.isoformat(), "end": d_end.isoformat(),
             "country": country.strip() or "대한민국",
             "memo": memo.strip(),
+            # 시간·일차·메모·완료 여부까지 모두 담아 두면 나중에 여행 정보로 그대로 불러올 수 있어요
+            "plan": {k: v for k, v in build_payload().items() if k != "record_id"},
         }
-        if append_record(rec):
-            st.session_state.msg = "여행 기록으로 넘겼어요 📖"
+        if upsert_record(rec):
+            ss.linked_record = rec["id"]
+            for k in [k for k in ss.keys() if str(k).startswith(
+                    ("rec_title_", "rec_start_", "rec_end_", "rec_country_", "rec_memo_", "rec_mode_"))]:
+                del ss[k]
+            ss.msg = "기록을 덮어썼어요 📖" if base_rec else "여행 기록으로 넘겼어요 📖"
             st.rerun()
         else:
             st.error("기록 저장에 실패했어요. 잠시 후 다시 시도해 주세요.")
@@ -886,7 +935,10 @@ with col_ctrl:
             with row_c2:
                 render_card(spots[i + 1])
     st.markdown('<div style="height:0.5rem;"></div>', unsafe_allow_html=True)
+    if st.session_state.get("linked_record"):
+        st.caption("🔗 여행 기록에서 불러온 계획이에요. 수정한 뒤 그 기록에 덮어쓸 수 있어요.")
     if st.button("📖 여행 기록으로 넘기기", key="send_to_records", use_container_width=True):
+        st.session_state.rec_cache = fetch_records()
         send_to_records_dialog()
 
 with col_map:
