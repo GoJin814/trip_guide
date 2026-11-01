@@ -161,6 +161,43 @@ def split_time(t):
     return t, "10:00"
 
 
+def pick_time(label: str, key: str, value: str) -> str:
+    """글자 입력 없이 누르기만 하는 시간 선택 (시 → 분). 키보드가 뜨지 않아요."""
+    try:
+        h0, m0 = [x.strip() for x in value.split(":")[:2]]
+        int(h0), int(m0)
+    except Exception:
+        h0, m0 = "09", "00"
+    ss = st.session_state
+    hours = [f"{h:02d}" for h in range(5, 24)]
+    if h0 not in hours:
+        hours = sorted(hours + [h0])
+    mins = ["00", "30"]
+    if m0 not in mins:
+        mins = sorted(mins + [m0])
+    st.markdown(f"<div style='font-size:0.85rem;color:#31333F;margin:0.3rem 0 0.1rem;'>{label}</div>",
+                unsafe_allow_html=True)
+    h_sel = st.pills(f"{label} 시", hours, default=h0, key=f"{key}_h", format_func=lambda h: f"{int(h)}시",
+                     label_visibility="collapsed")
+    m_sel = st.pills(f"{label} 분", mins, default=m0, key=f"{key}_m", format_func=lambda m: f"{m}분",
+                     label_visibility="collapsed")
+    h = h_sel or ss.get(f"{key}_hl") or h0     # 같은 칸을 한 번 더 눌러 선택이 풀려도 직전 값을 유지
+    m = m_sel or ss.get(f"{key}_ml") or m0
+    ss[f"{key}_hl"], ss[f"{key}_ml"] = h, m
+    return f"{h}:{m}"
+
+
+def time_range_inputs(prefix: str, start_val: str, end_val: str):
+    """(시작, 완료) 반환. 종일이면 ('종일', 임시값)"""
+    all_day = st.toggle("종일 (시간 없이 하루 종일)", value=(start_val == "종일"), key=f"{prefix}_all")
+    dummy_end = end_val if end_val and end_val != "종일" else "10:00"
+    if all_day:
+        return "종일", dummy_end
+    start = pick_time("시작 시간", f"{prefix}_s", start_val if start_val != "종일" else "09:00")
+    end = pick_time("완료 시간", f"{prefix}_e", dummy_end)
+    return start, end
+
+
 def make_time(start, end):
     return "종일" if start == "종일" else f"{start}~{end}"
 
@@ -781,10 +818,7 @@ def add_spot_dialog() -> None:
     st.markdown("##### 📍 장소 정보")
     new_name = st.text_input("장소명", key="new_name", placeholder="예: 구봉산 카페거리")
     new_day = st.number_input("일차 (Day)", min_value=1, max_value=99, value=2, step=1, key="new_day")
-    new_start = st.selectbox("시작 시간", time_options(with_all_day=True),
-                             index=pick_index(time_options(with_all_day=True), "09:00"), key="new_start")
-    new_end = st.selectbox("완료 시간", time_options(), index=pick_index(time_options(), "10:00"),
-                           key="new_end", disabled=new_start == "종일")
+    new_start, new_end = time_range_inputs("new_t", "09:00", "10:00")
     new_time = make_time(new_start, new_end)
     new_tip = st.text_area("메모/팁 (Enter로 줄바꿈)", placeholder="예: 소양강 조망 카페", height=90, key="new_tip")
     new_lat = st.number_input("위도(Lat)", value=float(ss.pick_lat), format="%.4f", key=f"new_lat_{ss.pick_key}")
@@ -944,12 +978,7 @@ with col_ctrl:
                 st.markdown("**✏️ 일정 정보 수정**")
                 edit_name = st.text_input("장소명", value=spot["name"], key=f"inp_name_{sid}")
                 s_start, s_end = split_time(spot.get("time", ""))
-                edit_start = st.selectbox("시작 시간", time_options(extra=s_start, with_all_day=True),
-                                          index=pick_index(time_options(extra=s_start, with_all_day=True), s_start),
-                                          key=f"inp_start_{sid}")
-                edit_end = st.selectbox("완료 시간", time_options(extra=s_end),
-                                        index=pick_index(time_options(extra=s_end), s_end),
-                                        key=f"inp_end_{sid}", disabled=edit_start == "종일")
+                edit_start, edit_end = time_range_inputs(f"inp_t_{sid}", s_start, s_end)
                 edit_time = make_time(edit_start, edit_end)
                 edit_day = st.number_input("일차 (Day)", min_value=1, max_value=99,
                                            value=max(1, int(spot.get("day", 1))), step=1, key=f"inp_day_{sid}")
