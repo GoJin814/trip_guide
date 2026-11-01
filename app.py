@@ -48,8 +48,8 @@ PTR_JS = """
 (function () {
   var top = window.parent;
   try {
-    if (top.__tripPTR >= 3) return;   // 버전 표시: 예전 스크립트가 남아 있어도 새 스크립트가 적용되게
-    top.__tripPTR = 3;
+    if (top.__tripPTR >= 4) return;   // 버전 표시: 예전 스크립트가 남아 있어도 새 스크립트가 적용되게
+    top.__tripPTR = 4;
     var doc = top.document;
     var startY = null, armed = false;
     function atTop() {
@@ -100,6 +100,24 @@ PTR_JS = """
         s.querySelectorAll('input').forEach(function (el) { el.setAttribute('inputmode', 'none'); el.readOnly = true; });
       }, true);
     });
+    // 선택칸 입력창이 포커스되는 '바로 그 순간'에 읽기 전용으로 만듦 (목록이 열릴 때 새로 생기는 입력창 포함)
+    try {
+      var origFocus = top.HTMLElement.prototype.focus;
+      top.HTMLElement.prototype.focus = function () {
+        try {
+          if (this.tagName === 'INPUT' && this.closest && this.closest('[data-baseweb="select"]')) {
+            this.setAttribute('inputmode', 'none'); this.readOnly = true;
+          }
+        } catch (e) {}
+        return origFocus.apply(this, arguments);
+      };
+    } catch (e) {}
+    doc.addEventListener('focusin', function (e) {   // 마지막 안전장치
+      var el = e.target;
+      if (el && el.tagName === 'INPUT' && el.closest && el.closest('[data-baseweb="select"]')) {
+        el.setAttribute('inputmode', 'none'); el.readOnly = true;
+      }
+    }, true);
     top.addEventListener('message', function (e) {
       var d = e.data;
       if (!d) return;
@@ -549,6 +567,7 @@ CSS = """
     /* 당겨서 새로고침 방해 요소 제거: 모든 스크롤 영역의 overscroll을 기본값(auto)으로 */
     *, *::before, *::after {overscroll-behavior-y: auto !important;}
     [role="listbox"], [data-baseweb="menu"], [data-baseweb="popover"] {overscroll-behavior-y: contain !important;}
+    [data-baseweb="select"] input {caret-color: transparent !important;}
     .stCheckbox label {font-size: 0.92rem !important; font-weight: 700 !important; cursor: pointer; color: #111827;}
     .stCheckbox {margin-bottom: 0 !important;}
 
