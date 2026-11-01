@@ -48,12 +48,13 @@ PTR_JS = """
 (function () {
   var top = window.parent;
   try {
-    if (top.__tripPTR) return;
-    top.__tripPTR = true;
+    if (top.__tripPTR >= 3) return;   // 버전 표시: 예전 스크립트가 남아 있어도 새 스크립트가 적용되게
+    top.__tripPTR = 3;
     var doc = top.document;
     var startY = null, armed = false;
     function atTop() {
-      if (doc.querySelector('[role="dialog"]')) return false; // 대화상자 안에서의 스크롤은 제외
+      // 대화상자·시간 목록(드롭다운)이 열려 있으면 당겨서 새로고침 안 함
+      if (doc.querySelector('[role="dialog"], [role="listbox"], [data-baseweb="popover"]')) return false;
       var els = [doc.scrollingElement, doc.body,
         doc.querySelector('[data-testid="stAppViewContainer"]'),
         doc.querySelector('[data-testid="stMain"]'),
@@ -69,7 +70,13 @@ PTR_JS = """
       if (y - startY > 90) { armed = false; top.location.reload(); }
     }
     function end() { startY = null; armed = false; }
-    doc.addEventListener('touchstart', function (e) { start(e.touches[0].clientY); }, {passive: true});
+    doc.addEventListener('touchstart', function (e) {
+      var t = e.target;   // 목록·대화상자 안에서 시작한 스와이프는 새로고침 대상에서 제외
+      if (t && t.closest && t.closest('[role="listbox"], [data-baseweb="popover"], [data-baseweb="menu"], [role="dialog"]')) {
+        startY = null; armed = false; return;
+      }
+      start(e.touches[0].clientY);
+    }, {passive: true});
     doc.addEventListener('touchmove', function (e) { move(e.touches[0].clientY); }, {passive: true});
     doc.addEventListener('touchend', end, {passive: true});
     // 시간 등 목록 선택칸: 글자 입력 없이 목록에서만 고르게 (모바일에서 키보드가 뜨지 않음)
@@ -85,6 +92,14 @@ PTR_JS = """
       if (!lockQueued) { lockQueued = true; top.requestAnimationFrame(lockSelects); }
     }).observe(doc.body, {childList: true, subtree: true});
     lockSelects();
+    // 선택칸을 누르는 순간(포커스되기 전)에 한 번 더 잠가서 키보드가 뜨지 않게 함
+    ['pointerdown', 'touchstart', 'mousedown'].forEach(function (ev) {
+      doc.addEventListener(ev, function (e) {
+        var s = e.target && e.target.closest ? e.target.closest('[data-baseweb="select"]') : null;
+        if (!s) return;
+        s.querySelectorAll('input').forEach(function (el) { el.setAttribute('inputmode', 'none'); el.readOnly = true; });
+      }, true);
+    });
     top.addEventListener('message', function (e) {
       var d = e.data;
       if (!d) return;
@@ -533,6 +548,7 @@ CSS = """
     [data-testid="stSidebar"] {display: none !important;}
     /* 당겨서 새로고침 방해 요소 제거: 모든 스크롤 영역의 overscroll을 기본값(auto)으로 */
     *, *::before, *::after {overscroll-behavior-y: auto !important;}
+    [role="listbox"], [data-baseweb="menu"], [data-baseweb="popover"] {overscroll-behavior-y: contain !important;}
     .stCheckbox label {font-size: 0.92rem !important; font-weight: 700 !important; cursor: pointer; color: #111827;}
     .stCheckbox {margin-bottom: 0 !important;}
 
